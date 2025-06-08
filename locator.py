@@ -37,11 +37,16 @@ class Locator:
             cmd = [self.cmd, '-i', '-l', str(self.limit)]
             args = pattern.split(' ')
             if args[0].lower() == 'r' and len(args) > 1:
-                cmd.extend(args[1:])
+                # Construct a basic regex pattern for raw mode
+                search_pattern = args[1] if args[1] else '.*'
+                cmd.append(f'.*{search_pattern}.*')
             else:
                 cmd.append(pattern)
             print(f'Executing command: {" ".join(cmd)}')
             output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
-            return [line for line in output.splitlines() if line.strip()]
+            results = [line for line in output.splitlines() if line.strip()]
+            if not results:
+                raise RuntimeError('No results found for the given pattern')
+            return results
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Command failed with exit status {e.returncode}: {e.output}")
