@@ -10,11 +10,11 @@ class Locator:
         self.opt = ''
 
     def set_limit(self, limit):
-        print(('set limit to '+str(limit)))
+        print('set limit to '+str(limit))
         self.limit = limit
 
     def set_locate_opt(self, opt):
-        print(('set locate opt to '+opt))
+        print('set locate opt to '+opt)
         self.opt = opt
 
     def __check_has_locate(self):
@@ -35,6 +35,6 @@ class Locator:
             else:
                 cmd.append(self.opt)
                 cmd.extend(args)
-            print(('----->'+str(cmd)))
+            print('----->'+str(cmd))
             output = subprocess.check_output(cmd)
             return output.splitlines()

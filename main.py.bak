@@ -96,7 +96,7 @@ class KeywordQueryEventListener(EventListener):
                         name = file, 
                         on_enter = OpenAction(file),
                         on_alt_enter = alt_action))
-            except Exception as e:
+            except Exception, e:
                 error_info = str(e)
                 items = [ExtensionSmallResultItem(icon='images/error.png',
                                                 name = error_info,
