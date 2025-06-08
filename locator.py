@@ -9,8 +9,16 @@ class Locator:
         self.limit = 5
 
     def set_limit(self, limit):
-        print(('set limit to '+str(limit)))
-        self.limit = limit
+        try:
+            new_limit = int(limit)
+            if new_limit > 0:
+                self.limit = new_limit
+            else:
+                self.limit = 5 # Default to 5 if invalid
+            print(('set limit to '+str(self.limit)))
+        except ValueError:
+            self.limit = 5 # Default to 5 if not a number
+            print(('Invalid limit value, setting to default: '+str(self.limit)))
 
     def __check_has_plocate(self):
         try:
