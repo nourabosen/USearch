@@ -12,7 +12,6 @@ from ulauncher.api.shared.event import ItemEnterEvent
 from ulauncher.api.shared.action.ExtensionCustomAction import ExtensionCustomAction
 from locator import Locator
 
-
 locator = Locator()
 
 class SearchFileExtension(Extension):
@@ -23,17 +22,14 @@ class SearchFileExtension(Extension):
         self.subscribe(PreferencesUpdateEvent, PreferencesUpdateEventListener())
         self.subscribe(ItemEnterEvent, ItemEnterEventListener())
 
-
 class PreferencesUpdateEventListener(EventListener):
     def on_event(self, event, extension):
         if event.id == 'limit':
             locator.set_limit(event.new_value)
 
-
 class PreferencesEventListener(EventListener):
     def on_event(self, event, extension):
         locator.set_limit(event.preferences['limit'])
-
 
 class ItemEnterEventListener(EventListener):
     def on_event(self, event, extension):
@@ -41,10 +37,9 @@ class ItemEnterEventListener(EventListener):
         items = []
         for file in results:
             items.append(ExtensionSmallResultItem(icon='images/copy.png',
-                name = file,
-                on_enter = CopyToClipboardAction(file)))
+                name=file,
+                on_enter=CopyToClipboardAction(file)))
         return RenderResultListAction(items)
-
 
 class KeywordQueryEventListener(EventListener):
     def __help(self):
@@ -70,17 +65,16 @@ class KeywordQueryEventListener(EventListener):
                 alt_action = ExtensionCustomAction(results, True)
                 for file in results:
                     items.append(ExtensionSmallResultItem(icon='images/ok.png',
-                        name = file, 
-                        on_enter = OpenAction(file),
-                        on_alt_enter = alt_action))
+                        name=file, 
+                        on_enter=OpenAction(file),
+                        on_alt_enter=alt_action))
             except Exception as e:
                 error_info = str(e)
                 items = [ExtensionSmallResultItem(icon='images/error.png',
-                                                name = error_info,
-                                                on_enter = CopyToClipboardAction(error_info))]
+                                                name=error_info,
+                                                on_enter=CopyToClipboardAction(error_info))]
         
         return RenderResultListAction(items)
-
 
 if __name__ == '__main__':
     SearchFileExtension().run()
