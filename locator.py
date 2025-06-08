@@ -30,15 +30,18 @@ class Locator:
     def run(self, pattern):
         if not self.cmd:
             raise RuntimeError('Neither plocate nor locate commands found')
+        if not pattern or not pattern.strip():
+            raise RuntimeError('No search pattern provided')
+        
         try:
             cmd = [self.cmd, '-i', '-l', str(self.limit)]
             args = pattern.split(' ')
-            if args[0] == 'r':
+            if args[0].lower() == 'r' and len(args) > 1:
                 cmd.extend(args[1:])
             else:
-                cmd.extend(args)
-            print(('----->' + str(cmd)))
+                cmd.append(pattern)
+            print(f'Executing command: {" ".join(cmd)}')
             output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
-            return output.splitlines()
+            return [line for line in output.splitlines() if line.strip()]
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Command failed with exit status {e.returncode}: {e.output}")
