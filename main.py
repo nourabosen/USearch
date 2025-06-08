@@ -62,7 +62,7 @@ class KeywordQueryEventListener(EventListener):
         arg = event.get_argument()
         items = []
 
-        if arg is None:
+        if arg is None or arg.strip() == '':
             items = self.__help()
         else:
             try:
