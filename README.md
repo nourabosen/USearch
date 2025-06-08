@@ -1,31 +1,26 @@
-**Note**
+plocate finder
+Extension for ulauncher to quickly find files on your system using the plocate command, which provides fast file indexing and searching capabilities.
+Features
 
-This repository will not be maintain anymore!
+Fast File Search: Utilizes plocate to search files efficiently by leveraging an indexed database.
+Two Search Modes:
+Normal Mode: Search by exact file names (e.g., s davinci.png).
+Raw Mode: Use regex patterns for advanced searches (e.g., s r .png to find all PNG files).
 
-Instead of wasting time waiting searching command to complete, I chose organising my files orderly. Another good practise may be using your powerfull 'Recent files'.
 
-For files that only used few times, 'find' command would be good. And for me, terminal + locate would work too.
+Result Limit: Configurable maximum number of results (default: 8).
+Actions: Press Alt+Number to open files with xdg-open or Alt+Enter to copy file paths to clipboard.
 
-**Old ReadMe**
+Usage
 
-Extension for [ulauncher](https://ulauncher.io/) to visit your files anytime, anywhere.
+Trigger the extension with the keyword s followed by your search term.
+For raw mode, prepend r (e.g., s r .png to match files ending in .png).
+Configure preferences in Ulauncher to adjust the result limit or locate options.
 
-![help](images/0.png)
+Installation
 
-The *searchfile* extension use command `locate` to locate file.
+Ensure plocate is installed (sudo apt install plocate on Debian-based systems) and the database is updated (sudo updatedb).
+Install the extension via Ulauncher's extension manager.
 
-Currently it has two modes.
-
-1. Search by basename, equivalent to `locate -b`
-
-![basename search](images/1.png)
-
-2. Raw mode, which pass all argument directly into `locate`. The flowing screenshot demonstrates how to use regex to match files with subfix `png` in `searchfile` direcory(first <u>r</u> is use to trigger <u>r</u>aw mode):
-
-![regex search](images/2.png)
-
-Press Alt+Number to open files using `xdg-open`.
-
-Alternative, you can press Alt-Enter to switch to copy-to-clipboard menu.
-
-![copy-to-clipboard menu](images/3.png)
+Support
+For issues or suggestions, feel free to reach out to the developer, hassanradwannn.
