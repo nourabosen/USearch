@@ -17,7 +17,7 @@ locator = Locator()
 
 class Options:
     def __init__(self):
-        self.options = ["-iA"]
+        self.options = ["-i"]
 
     def update(self, opt_str):
         self.options = opt_str.split(';')
