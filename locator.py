@@ -46,7 +46,7 @@ class Locator:
     def __run_find(self, pattern):
         # Dynamically detect mounted hardware paths under /run/media and /mnt
         search_dirs = []
-        search_dirs.extend(glob.glob("/run/media/*/*"))  # e.g. /run/media/nour/UUID
+        search_dirs.extend(glob.glob("/run/media/*/*"))
         search_dirs.extend(glob.glob("/mnt/*"))
 
         results = []
