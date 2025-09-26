@@ -1,6 +1,6 @@
 {
   "required_api_version": "2",
-  "name": "plocate finder (hybrid)",
+  "name": "USearch",
   "description": "Find files using plocate/locate (fast indexed search) and include mounted hardware by performing a live scan of /run/media. Shows paginated results and preserves fast behavior while enabling external drive searches.",
   "developer_name": "NOur Abosen",
   "icon": "images/icon.png",
