@@ -124,11 +124,7 @@ class Locator:
 
     def _run_locate(self, pattern: str, search_folders: bool = False) -> List[str]:
         """Run locate command with optional folder search."""
-        if search_folders:
-            # For folder search, we need to filter results to directories only
-            cmd = [self.cmd, '-i', '-l', str(self.limit * 2), pattern]  # Get more results to filter
-        else:
-            cmd = [self.cmd, '-i', '-l', str(self.limit), pattern]
+        cmd = [self.cmd, '-i', '-l', str(self.limit * 3), pattern]  # Get more results to filter
         
         print(f'Executing locate command: {" ".join(cmd)}')
         
@@ -137,7 +133,7 @@ class Locator:
             results = [line for line in output.splitlines() if line.strip()]
             
             if search_folders:
-                # Filter to only include directories
+                # Filter to only include directories that exist
                 folder_results = []
                 for result in results:
                     if os.path.isdir(result):
@@ -147,6 +143,8 @@ class Locator:
                 print(f"Locate found {len(folder_results)} folders (filtered from {len(results)} results)")
                 return folder_results
             else:
+                # For files, return all results up to limit
+                results = results[:self.limit]
                 print(f"Locate found {len(results)} results")
                 return results
                 
@@ -157,33 +155,46 @@ class Locator:
             print("Locate command timed out")
             return []
 
+    def _parse_search_mode(self, pattern: str):
+        """Parse the search pattern and return (search_type, clean_pattern)"""
+        tokens = pattern.strip().split()
+        if not tokens:
+            return "files", ""
+            
+        # Check for folder search
+        if tokens[0].lower() == 'folder' and len(tokens) > 1:
+            return "folders", ' '.join(tokens[1:])
+        
+        # Check for hardware folder search
+        if len(tokens) >= 2 and tokens[0].lower() == 'hw' and tokens[1].lower() == 'folder':
+            return "hw_folders", ' '.join(tokens[2:]) if len(tokens) > 2 else ""
+        
+        # Check for hardware search
+        if tokens[0].lower() == 'hw' and len(tokens) > 1:
+            return "hardware", ' '.join(tokens[1:])
+        
+        # Check for raw search
+        if tokens[0].lower() == 'r' and len(tokens) > 1:
+            return "raw", ' '.join(tokens[1:])
+        
+        # Default to file search
+        return "files", pattern
+
     def run(self, pattern):
         if not self.cmd:
             raise RuntimeError('Neither plocate nor locate commands found')
         if not pattern or not pattern.strip():
             raise RuntimeError('No search pattern provided')
         
-        tokens = pattern.strip().split()
-        print(f"Search pattern: '{pattern}', tokens: {tokens}")
+        search_type, clean_pattern = self._parse_search_mode(pattern)
+        print(f"Search type: {search_type}, pattern: '{clean_pattern}'")
         
-        # Check for folder search mode
-        search_folders = False
-        if tokens[0].lower() == 'folder' and len(tokens) > 1:
-            search_folders = True
-            tokens = tokens[1:]  # Remove 'folder' prefix
-            pattern = ' '.join(tokens)
-            print(f"Folder search mode enabled for: '{pattern}'")
+        if not clean_pattern.strip():
+            raise RuntimeError('No search pattern provided after mode prefix')
         
-        # Hardware-only mode: "hw <pattern>"
-        if tokens[0].lower() == 'hw' and len(tokens) > 1:
-            search_pattern = ' '.join(tokens[1:])
-            print(f"Hardware-only search for: '{search_pattern}' (folders: {search_folders})")
-            return self._run_find(search_pattern, search_folders)
-        
-        # Raw mode: "r <args>"
-        if tokens[0].lower() == 'r' and len(tokens) > 1:
-            raw_args = tokens[1:]
-            cmd = [self.cmd] + raw_args
+        # Raw mode
+        if search_type == "raw":
+            cmd = [self.cmd] + clean_pattern.split()
             print(f'Executing raw command: {" ".join(cmd)}')
             try:
                 output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
@@ -191,22 +202,38 @@ class Locator:
             except subprocess.CalledProcessError as e:
                 raise RuntimeError(f"Command failed with exit status {e.returncode}: {e.output}")
         
-        # Normal mode: combined search
-        search_pattern = pattern
-        locate_results = self._run_locate(search_pattern, search_folders)
-        print(f"Locate found {len(locate_results)} results")
-
-        # Always run hardware search but only if we have a pattern
-        hardware_results = []
-        if search_pattern.strip():
-            hardware_results = self._run_find(search_pattern, search_folders)
-            print(f"Hardware search found {len(hardware_results)} results")
-
-        # Combine results - remove duplicates
-        combined_results = locate_results.copy()
-        for result in hardware_results:
-            if result not in combined_results and len(combined_results) < self.limit:
-                combined_results.append(result)
-
-        print(f"Total combined results: {len(combined_results)}")
-        return combined_results[:self.limit]
+        # Hardware-only file search
+        elif search_type == "hardware":
+            return self._run_find(clean_pattern, search_folders=False)
+        
+        # Hardware folder search
+        elif search_type == "hw_folders":
+            return self._run_find(clean_pattern, search_folders=True)
+        
+        # Folder search (combined locate + hardware)
+        elif search_type == "folders":
+            locate_results = self._run_locate(clean_pattern, search_folders=True)
+            hardware_results = self._run_find(clean_pattern, search_folders=True)
+            
+            # Combine results - remove duplicates
+            combined_results = locate_results.copy()
+            for result in hardware_results:
+                if result not in combined_results and len(combined_results) < self.limit:
+                    combined_results.append(result)
+            
+            print(f"Total combined folder results: {len(combined_results)}")
+            return combined_results[:self.limit]
+        
+        # Default file search (combined locate + hardware)
+        else:  # search_type == "files"
+            locate_results = self._run_locate(clean_pattern, search_folders=False)
+            hardware_results = self._run_find(clean_pattern, search_folders=False)
+            
+            # Combine results - remove duplicates
+            combined_results = locate_results.copy()
+            for result in hardware_results:
+                if result not in combined_results and len(combined_results) < self.limit:
+                    combined_results.append(result)
+            
+            print(f"Total combined file results: {len(combined_results)}")
+            return combined_results[:self.limit]
