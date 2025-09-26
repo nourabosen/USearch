@@ -32,39 +32,61 @@ class Locator:
             self.limit = None
 
     def _discover_hardware_paths(self) -> List[str]:
-        """Discover active mount points under /run/media, /media, and /mnt."""
-        paths = []
-        try:
-            # /run/media/<user>/<volume>
-            base = "/run/media"
+    """Discover active mount points under /run/media, /media, and /mnt."""
+    paths = []
+    try:
+        # Handle /run/media/*/* (user-specific mounts)
+        run_media = "/run/media"
+        if os.path.isdir(run_media):
+            for user in os.listdir(run_media):
+                user_path = os.path.join(run_media, user)
+                if os.path.isdir(user_path):
+                    try:
+                        for vol in os.listdir(user_path):
+                            full_path = os.path.join(user_path, vol)
+                            if os.path.isdir(full_path):
+                                paths.append(full_path)
+                    except PermissionError:
+                        logging.warning("Permission denied: %s", user_path)
+
+        # Handle /media/* and /mnt/*
+        for base in ["/media", "/mnt"]:
             if os.path.isdir(base):
-                for user in os.listdir(base):
-                    userdir = os.path.join(base, user)
-                    if os.path.isdir(userdir):
-                        for vol in os.listdir(userdir):
-                            p = os.path.join(userdir, vol)
-                            if os.path.isdir(p):
-                                paths.append(p)
-
-            # /media/* and /mnt/*
-            for base in ["/media", "/mnt"]:
-                if os.path.isdir(base):
+                try:
                     for entry in os.listdir(base):
-                        p = os.path.join(base, entry)
-                        if os.path.isdir(p):
-                            paths.append(p)
-        except Exception:
-            logging.exception("Error discovering hardware paths")
+                        full_path = os.path.join(base, entry)
+                        if os.path.isdir(full_path):
+                            paths.append(full_path)
+                except PermissionError:
+                    logging.warning("Permission denied: %s", base)
 
-        # Deduplicate while preserving order
-        seen = set()
-        out = []
-        for p in paths:
-            if p not in seen:
-                seen.add(p)
-                out.append(p)
-        logging.debug("Discovered hardware paths: %s", out)
-        return out
+        # Also explicitly check if /run/media/nour/... exists (debug fallback)
+        explicit_paths = [
+            f"/run/media/{os.getlogin()}",
+            "/run/media/nour"  # hardcode your user if needed for testing
+        ]
+        for ep in explicit_paths:
+            if os.path.isdir(ep):
+                try:
+                    for vol in os.listdir(ep):
+                        p = os.path.join(ep, vol)
+                        if os.path.isdir(p) and p not in paths:
+                            paths.append(p)
+                except Exception:
+                    pass
+
+    except Exception:
+        logging.exception("Error during hardware path discovery")
+
+    # Deduplicate
+    seen = set()
+    out = []
+    for p in paths:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    logging.debug("Final discovered hardware paths: %s", out)
+    return out
 
     def _run_locate(self, tokens: List[str], raw_mode: bool = False) -> List[str]:
         if not self.locate_cmd:
