@@ -53,3 +53,5 @@ Navigation:
 ## Acknowledgement
 Thanks to the original developer, [hassanradwannn](https://github.com/hassanradwannn).  
 This fork extends the original work by adding support for searching hardware-mounted drives (e.g. `/run/media`).
+
+Icon from [Flaticon](https://www.flaticon.com/free-icon/search-file_11677437)
