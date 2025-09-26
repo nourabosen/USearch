@@ -1,90 +1,74 @@
-"""
-locator.py — concurrent hybrid locator for Ulauncher fork
-
-- Runs plocate/locate (fast, indexed) and find on hardware mounts concurrently.
-- Detects mounts via /proc/mounts (looks for mountpoints under /run/media, /media, /mnt).
-- Modes:
-    * "hw <term>" : hardware-only find
-    * "r <args...>" : raw locate args passed to locate/plocate
-    * otherwise : run locate AND find, merge results
-- Writes debug to /tmp/ul_locator_debug.log
-- Returns combined list (no slicing). main.py should paginate.
-"""
-from __future__ import annotations
-import shutil
 import subprocess
+import shutil
 import os
+import glob
 import logging
 from typing import List
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 LOG_PATH = "/tmp/ul_locator_debug.log"
-logging.basicConfig(filename=LOG_PATH,
-                    level=logging.DEBUG,
-                    format="%(asctime)s %(levelname)s: %(message)s")
+logging.basicConfig(
+    filename=LOG_PATH,
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s: %(message)s"
+)
 
 
 class Locator:
     def __init__(self):
+        # Prefer plocate, fall back to locate
         self.locate_cmd = shutil.which("plocate") or shutil.which("locate")
         self.find_cmd = shutil.which("find")
-        self.limit = None  # do not enforce here
-        self.locate_timeout = 4    # seconds for locate
-        self.find_timeout = 20     # per mount find timeout
-        # recognized mount prefixes
-        self._mount_prefixes = ("/run/media", "/media", "/mnt")
-        logging.debug("Locator initialized; locate_cmd=%s find_cmd=%s", self.locate_cmd, self.find_cmd)
+        self.limit = None  # Pagination handled by main.py
+        self.hardware_bases = ["/run/media", "/media", "/mnt"]
+
+        logging.debug("Locator init; locate_cmd=%s find_cmd=%s", self.locate_cmd, self.find_cmd)
 
     def set_limit(self, limit):
         try:
             self.limit = int(limit)
             logging.debug("set_limit -> %s", self.limit)
         except Exception:
-            logging.exception("invalid limit: %s", limit)
+            logging.exception("set_limit: invalid value: %s", limit)
             self.limit = None
 
-    def set_locate_opt(self, opt):
-        # kept for backward compatibility; not used by default flow
-        self._locate_opt = opt
-        logging.debug("set_locate_opt -> %s", opt)
-
-    def _discover_hardware_mounts(self) -> List[str]:
-        mounts = []
+    def _discover_hardware_paths(self) -> List[str]:
+        """Discover active mount points under /run/media, /media, and /mnt."""
+        paths = []
         try:
-            with open("/proc/mounts", "r") as fh:
-                for line in fh:
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        mpoint = parts[1]
-                        # include mountpoints under the prefixes
-                        if any(mpoint.startswith(pref + "/") or mpoint == pref for pref in self._mount_prefixes):
-                            if os.path.isdir(mpoint):
-                                mounts.append(mpoint)
-        except Exception:
-            logging.exception("failed reading /proc/mounts, falling back to globbing")
+            # /run/media/<user>/<volume>
+            base = "/run/media"
+            if os.path.isdir(base):
+                for user in os.listdir(base):
+                    userdir = os.path.join(base, user)
+                    if os.path.isdir(userdir):
+                        for vol in os.listdir(userdir):
+                            p = os.path.join(userdir, vol)
+                            if os.path.isdir(p):
+                                paths.append(p)
 
-        # fallback: check common dirs if none found
-        if not mounts:
-            for pref in self._mount_prefixes:
-                if os.path.isdir(pref):
-                    for entry in os.listdir(pref):
-                        p = os.path.join(pref, entry)
+            # /media/* and /mnt/*
+            for base in ["/media", "/mnt"]:
+                if os.path.isdir(base):
+                    for entry in os.listdir(base):
+                        p = os.path.join(base, entry)
                         if os.path.isdir(p):
-                            mounts.append(p)
+                            paths.append(p)
+        except Exception:
+            logging.exception("Error discovering hardware paths")
 
-        # dedupe preserve order
+        # Deduplicate while preserving order
         seen = set()
         out = []
-        for p in mounts:
+        for p in paths:
             if p not in seen:
                 seen.add(p)
                 out.append(p)
-        logging.debug("Discovered hardware mounts: %s", out)
+        logging.debug("Discovered hardware paths: %s", out)
         return out
 
     def _run_locate(self, tokens: List[str], raw_mode: bool = False) -> List[str]:
         if not self.locate_cmd:
-            logging.debug("No locate/plocate found on PATH")
+            logging.debug("No locate/plocate command available")
             return []
 
         if raw_mode:
@@ -93,127 +77,133 @@ class Locator:
             pattern = " ".join(tokens)
             cmd = [self.locate_cmd, "-i", pattern]
 
-        logging.debug("Running locate command: %s", cmd)
+        logging.debug("Running locate: %s", cmd)
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.locate_timeout)
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=6)
             out = proc.stdout or ""
             if proc.stderr:
                 logging.debug("locate stderr: %s", proc.stderr.strip())
             lines = [l for l in out.splitlines() if l.strip()]
-            logging.debug("locate found %d results", len(lines))
+            logging.debug("locate returned %d lines", len(lines))
             return lines
-        except subprocess.TimeoutExpired:
-            logging.warning("locate timed out for cmd: %s", cmd)
-            return []
-        except Exception:
-            logging.exception("locate failed for cmd: %s", cmd)
+        except Exception as e:
+            logging.exception("locate run failed: %s", e)
             return []
 
-    def _run_find_on_mount(self, mount: str, pattern: str) -> List[str]:
-        if not os.path.isdir(mount):
-            return []
-        if not self.find_cmd:
-            logging.debug("find command not found; skipping find on %s", mount)
+    def _run_find_on_path(self, path: str, pattern: str, timeout: int = 20) -> List[str]:
+        if not os.path.isdir(path):
             return []
 
-        # Use -iname for case-insensitive substring search
-        cmd = [self.find_cmd, mount, "-iname", f"*{pattern}*"]
-        logging.debug("Running find: %s", cmd)
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.find_timeout)
-            out = proc.stdout or ""
-            if proc.stderr:
-                logging.debug("find stderr for %s: %s", mount, proc.stderr.strip())
-            lines = [l for l in out.splitlines() if l.strip()]
-            logging.debug("find on %s returned %d", mount, len(lines))
-            return lines
-        except subprocess.TimeoutExpired:
-            logging.warning("find timed out on %s", mount)
-            return []
-        except Exception:
-            logging.exception("find failed on %s", mount)
-            return []
+        if self.find_cmd:
+            cmd = [self.find_cmd, path, "-iname", f"*{pattern}*"]
+            logging.debug("Running find: %s", cmd)
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+                out = proc.stdout or ""
+                if proc.stderr:
+                    logging.debug("find stderr (path=%s): %s", path, proc.stderr.strip())
+                lines = [l for l in out.splitlines() if l.strip()]
+                logging.debug("find(%s) returned %d lines", path, len(lines))
+                return lines
+            except subprocess.TimeoutExpired:
+                logging.warning("find timed out on %s", path)
+                return []
+            except Exception:
+                logging.exception("find failed on %s", path)
+                return []
+        else:
+            # Fallback to os.walk
+            logging.debug("find command not found; using os.walk fallback on %s", path)
+            matches = []
+            want = pattern.lower()
+            try:
+                for dirpath, dirnames, filenames in os.walk(path):
+                    for fn in filenames:
+                        if want in fn.lower():
+                            matches.append(os.path.join(dirpath, fn))
+                logging.debug("os.walk found %d files in %s", len(matches), path)
+            except Exception:
+                logging.exception("os.walk failed on %s", path)
+            return matches
 
-    def _run_find_all_mounts(self, pattern: str) -> List[str]:
-        mounts = self._discover_hardware_mounts()
-        if not mounts:
-            logging.debug("No hardware mounts found to search")
+    def _run_find(self, pattern: str) -> List[str]:
+        if not pattern.strip():
+            return []
+        paths = self._discover_hardware_paths()
+        if not paths:
+            logging.debug("No hardware paths discovered")
             return []
 
         results = []
-        # run finds concurrently for speed
-        with ThreadPoolExecutor(max_workers=min(6, max(1, len(mounts)))) as ex:
-            futures = {ex.submit(self._run_find_on_mount, m, pattern): m for m in mounts}
-            for fut in as_completed(futures):
-                mount = futures[fut]
-                try:
-                    res = fut.result()
-                    if res:
-                        results.extend(res)
-                except Exception:
-                    logging.exception("Error for mount %s", mount)
-        logging.debug("Total find results across mounts: %d", len(results))
+        for p in paths:
+            try:
+                results.extend(self._run_find_on_path(p, pattern))
+            except Exception:
+                logging.exception("Error searching path %s", p)
+        logging.debug("Total find results across hardware: %d", len(results))
         return results
 
     @staticmethod
     def _unique_preserve_order(items: List[str]) -> List[str]:
         seen = set()
         out = []
-        for it in items:
-            if it not in seen:
-                seen.add(it)
-                out.append(it)
+        for x in items:
+            if x not in seen:
+                seen.add(x)
+                out.append(x)
         return out
 
     def run(self, pattern: str) -> List[str]:
         logging.debug("run called with pattern: %r", pattern)
         if not pattern or not pattern.strip():
+            logging.debug("Empty pattern -> returning []")
             return []
 
         tokens = pattern.strip().split()
-        # hardware-only mode
+
+        # Hardware-only mode
         if tokens[0].lower() == "hw" and len(tokens) > 1:
             search_term = " ".join(tokens[1:])
-            logging.debug("Performing hardware-only search for: %s", search_term)
-            find_results = self._run_find_all_mounts(search_term)
+            logging.debug("Hardware-only search for: %s", search_term)
+            find_results = self._run_find(search_term)
             return self._unique_preserve_order(find_results)
 
-        # raw locate mode 'r <args...>'
-        raw_mode = tokens[0].lower() == "r" and len(tokens) > 1
-        locate_tokens = tokens[1:] if raw_mode else tokens
-        search_term = " ".join(locate_tokens).strip()
+        # Raw locate mode
+        raw_mode = (tokens[0].lower() == "r" and len(tokens) > 1)
+        if raw_mode:
+            locate_tokens = tokens[1:]
+        else:
+            locate_tokens = tokens
 
-        # run both locate and find concurrently
-        with ThreadPoolExecutor(max_workers=2) as ex:
-            future_locate = ex.submit(self._run_locate, locate_tokens, raw_mode)
-            future_find = ex.submit(self._run_find_all_mounts, search_term) if search_term else None
+        # Run locate
+        locate_results = self._run_locate(locate_tokens, raw_mode=raw_mode)
 
-            locate_results = future_locate.result()
-            find_results = future_find.result() if future_find else []
+        # Run find on hardware mounts (only if search term is non-empty)
+        search_term = " ".join(locate_tokens)
+        find_results = self._run_find(search_term) if search_term.strip() else []
 
-        combined = self._unique_preserve_order(locate_results + find_results)
-        logging.debug("Combined results count: %d", len(combined))
+        # Merge and deduplicate (locate first, then find)
+        combined = locate_results + find_results
+        combined = self._unique_preserve_order(combined)
+        logging.debug("Combined result count: %d", len(combined))
         return combined
 
 
-# CLI test helper
+# Quick manual test
 if __name__ == "__main__":
     import sys
-    q = " ".join(sys.argv[1:]).strip()
-    print("Debug log:", LOG_PATH)
+    q = " ".join(sys.argv[1:]).strip() if len(sys.argv) > 1 else ""
     loc = Locator()
-    print("locate_cmd:", loc.locate_cmd, "find_cmd:", loc.find_cmd)
-    print("discovered mounts:", loc._discover_hardware_mounts())
     if not q:
         print("Usage: python3 locator.py <query>")
         print("Examples:")
-        print("  python3 locator.py myfile")
-        print("  python3 locator.py 'hw myfile'   # hardware only")
-        print("  python3 locator.py 'r -S .png'   # raw locate args")
+        print("  python3 locator.py 'project.docx'        # hybrid search")
+        print("  python3 locator.py 'hw summer.jpg'       # hardware only")
+        print("  python3 locator.py 'r -S .png'           # raw locate")
+        print(f"Debug log: {LOG_PATH}")
         sys.exit(0)
     res = loc.run(q)
-    print(f"Found {len(res)} results (showing up to 500):")
-    for i, r in enumerate(res[:500], 1):
+    print(f"Found {len(res)} results (showing up to 200):")
+    for i, r in enumerate(res[:200], 1):
         print(f"{i:03d}: {r}")
-    print("\nTail debug log for details:")
-    print("  tail -n 200 /tmp/ul_locator_debug.log")
+    print(f"\nDebug log: {LOG_PATH}")
