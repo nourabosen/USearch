@@ -23,43 +23,32 @@ class Locator:
         except:
             self.limit = None
 
-    def _get_hardware_paths(self) -> List[str]:
+    def _get_mount_points(self) -> List[str]:
         paths = []
-        # 1. Your exact drive (most important)
-        your_drive = "/run/media/nour/01DBF71DDDEF4780"
-        if os.path.isdir(your_drive):
-            paths.append(your_drive)
-            logging.debug("Added your drive: %s", your_drive)
-        
-        # 2. Generic fallbacks (if accessible)
-        candidates = [
-            "/run/media",
-            "/media",
-            "/mnt"
-        ]
-        for base in candidates:
-            if os.path.isdir(base):
-                try:
-                    for item in os.listdir(base):
-                        full = os.path.join(base, item)
-                        if os.path.isdir(full) and full not in paths:
-                            paths.append(full)
-                except Exception as e:
-                    logging.debug("Skip %s: %s", base, e)
+        bases = ["/run/media", "/media", "/mnt"]
+        for base in bases:
+            if not os.path.isdir(base):
+                continue
+            try:
+                for entry in os.listdir(base):
+                    full_path = os.path.join(base, entry)
+                    if os.path.isdir(full_path):
+                        paths.append(full_path)
+            except Exception as e:
+                logging.debug("Skip base %s: %s", base, e)
         return paths
 
-    def _search_hardware(self, pattern: str) -> List[str]:
+    def _search_mounts(self, pattern: str) -> List[str]:
         if not pattern.strip():
             return []
         pattern_lower = pattern.lower()
         results = []
-        for path in self._get_hardware_paths():
+        for path in self._get_mount_points():
             try:
-                for root, dirs, files in os.walk(path):
+                for root, _, files in os.walk(path):
                     for f in files:
                         if pattern_lower in f.lower():
-                            full_path = os.path.join(root, f)
-                            results.append(full_path)
+                            results.append(os.path.join(root, f))
             except Exception as e:
                 logging.debug("Skip walk on %s: %s", path, e)
         logging.debug("Hardware search found %d results", len(results))
@@ -69,40 +58,46 @@ class Locator:
         if not self.locate_cmd:
             return []
         try:
-            cmd = [self.locate_cmd, "-i", query]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-            return lines
+            out = subprocess.check_output(
+                [self.locate_cmd, "-i", query],
+                text=True,
+                timeout=5,
+                stderr=subprocess.DEVNULL
+            )
+            return [line.strip() for line in out.splitlines() if line.strip()]
         except Exception as e:
             logging.debug("Locate failed: %s", e)
             return []
 
     def run(self, pattern: str) -> List[str]:
-        logging.debug("Search triggered with: %r", pattern)
         if not pattern or not pattern.strip():
             return []
 
         tokens = pattern.strip().split()
-        
-        # Hardware-only mode: "hw <term>"
-        if tokens[0].lower() == "hw" and len(tokens) > 1:
-            term = " ".join(tokens[1:])
-            return self._search_hardware(term)
 
-        # Raw locate mode: "r <args>"
+        # Hardware-only: "hw <term>"
+        if tokens[0].lower() == "hw" and len(tokens) > 1:
+            return self._search_mounts(" ".join(tokens[1:]))
+
+        # Raw locate: "r <args>"
         if tokens[0].lower() == "r" and len(tokens) > 1:
             try:
-                cmd = [self.locate_cmd] + tokens[1:]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+                out = subprocess.check_output(
+                    [self.locate_cmd] + tokens[1:],
+                    text=True,
+                    timeout=5,
+                    stderr=subprocess.DEVNULL
+                )
+                return [line.strip() for line in out.splitlines() if line.strip()]
             except:
                 return []
 
         # Default: locate + hardware
-        locate_results = self._run_locate(" ".join(tokens))
-        hardware_results = self._search_hardware(" ".join(tokens))
-        
-        # Deduplicate (locate first)
+        query = " ".join(tokens)
+        locate_results = self._run_locate(query)
+        hardware_results = self._search_mounts(query)
+
+        # Deduplicate (preserve order)
         seen = set()
         combined = []
         for item in locate_results + hardware_results:
