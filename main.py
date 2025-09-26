@@ -14,7 +14,6 @@ from ulauncher.api.shared.action import (
     SetUserQueryAction,
     ExtensionCustomAction
 )
-
 from locator import Locator
 
 locator = Locator()
@@ -37,7 +36,9 @@ class PreferencesUpdateEventListener(EventListener):
 
 class PreferencesEventListener(EventListener):
     def on_event(self, event, extension):
-        locator.set_limit(event.preferences.get('limit', locator.limit))
+        limit = event.preferences.get('limit')
+        if limit is not None:
+            locator.set_limit(limit)
 
 
 class ItemEnterEventListener(EventListener):
@@ -45,44 +46,34 @@ class ItemEnterEventListener(EventListener):
         data = event.get_data()
         items = []
 
-        # Legacy: list of paths (from older versions or alt-enter)
-        if isinstance(data, list):
-            for f in data:
-                items.append(ExtensionSmallResultItem(
-                    icon='images/copy.png',
-                    name=f,
-                    on_enter=CopyToClipboardAction(f)
-                ))
-            return RenderResultListAction(items)
-
-        # Paging payload
-        if isinstance(data, dict) and data.get('type') == 'page':
-            results = data.get('results', [])
-            page = int(data.get('page', 0))
-            per_page = int(data.get('per_page', locator.limit or 10))
+        # Expecting: {'results': [...], 'page': N, 'per_page': M}
+        if isinstance(data, dict) and 'results' in data:
+            results = data['results']
+            page = data.get('page', 0)
+            per_page = data.get('per_page', 10)
             start = page * per_page
             end = start + per_page
-            slice_results = results[start:end]
+            page_results = results[start:end]
 
-            for file in slice_results:
+            for file in page_results:
                 items.append(ExtensionSmallResultItem(
                     icon='images/ok.png',
                     name=file,
                     on_enter=OpenAction(file),
-                    on_alt_enter=ExtensionCustomAction(results, keep_app_open=True)
+                    on_alt_enter=CopyToClipboardAction(file)
                 ))
 
+            # "More results" item
             if end < len(results):
-                more_payload = {
-                    'type': 'page',
+                next_payload = {
                     'results': results,
                     'page': page + 1,
                     'per_page': per_page
                 }
                 items.append(ExtensionSmallResultItem(
                     icon='images/info.png',
-                    name=f"More results ({len(results) - end} remaining) — press Enter to load",
-                    on_enter=ExtensionCustomAction(more_payload, keep_app_open=True)
+                    name=f"More results ({len(results) - end} remaining) — press Enter",
+                    on_enter=ExtensionCustomAction(next_payload, keep_app_open=True)
                 ))
             else:
                 items.append(ExtensionSmallResultItem(
@@ -91,14 +82,16 @@ class ItemEnterEventListener(EventListener):
                     on_enter=SetUserQueryAction('')
                 ))
 
-            return RenderResultListAction(items)
+        else:
+            # Fallback: treat as raw list (e.g., from old alt-enter)
+            results = data if isinstance(data, list) else []
+            for file in results[:10]:
+                items.append(ExtensionSmallResultItem(
+                    icon='images/copy.png',
+                    name=file,
+                    on_enter=CopyToClipboardAction(file)
+                ))
 
-        # Fallback
-        items.append(ExtensionSmallResultItem(
-            icon='images/error.png',
-            name='Unrecognized event data',
-            on_enter=CopyToClipboardAction(str(data))
-        ))
         return RenderResultListAction(items)
 
 
@@ -107,17 +100,17 @@ class KeywordQueryEventListener(EventListener):
         return [
             ExtensionSmallResultItem(
                 icon='images/info.png',
-                name='s <pattern> — fast indexed search (plocate)',
+                name='s <pattern> — fast indexed + hardware search',
                 on_enter=SetUserQueryAction('s ')
             ),
             ExtensionSmallResultItem(
                 icon='images/info.png',
-                name='s hw <pattern> — live search on mounted drives (/run/media, /media, /mnt)',
+                name='s hw <pattern> — search only mounted drives (/run/media, /media, /mnt)',
                 on_enter=SetUserQueryAction('s hw ')
             ),
             ExtensionSmallResultItem(
                 icon='images/info.png',
-                name='s r <locate-args> — raw plocate/locate mode (regex, case-sensitive)',
+                name='s r <args> — raw plocate/locate mode (regex, case-sensitive)',
                 on_enter=SetUserQueryAction('s r ')
             )
         ]
@@ -130,38 +123,39 @@ class KeywordQueryEventListener(EventListener):
             items = self.__help()
         else:
             try:
+                # Get FULL result list from locator (no truncation)
                 results = locator.run(arg)
 
-                per_page = locator.limit or 10
-                page = 0
-                start = page * per_page
-                end = start + per_page
-                page_slice = results[start:end]
+                # Apply limit from preferences (default to 10 if not set)
+                per_page = locator.limit if locator.limit and locator.limit > 0 else 10
+                total = len(results)
 
-                for file in page_slice:
+                # Show first page
+                page_results = results[:per_page]
+                for file in page_results:
                     items.append(ExtensionSmallResultItem(
                         icon='images/ok.png',
                         name=file,
                         on_enter=OpenAction(file),
-                        on_alt_enter=ExtensionCustomAction(results, keep_app_open=True)
+                        on_alt_enter=CopyToClipboardAction(file)
                     ))
 
-                if end < len(results):
+                # Add "More results" if needed
+                if total > per_page:
                     payload = {
-                        'type': 'page',
                         'results': results,
-                        'page': page + 1,
+                        'page': 1,
                         'per_page': per_page
                     }
                     items.append(ExtensionSmallResultItem(
                         icon='images/info.png',
-                        name=f"More results ({len(results) - end} remaining) — press Enter to load",
+                        name=f"More results ({total - per_page} remaining) — press Enter",
                         on_enter=ExtensionCustomAction(payload, keep_app_open=True)
                     ))
                 else:
                     items.append(ExtensionSmallResultItem(
                         icon='images/info.png',
-                        name=f"Found {len(results)} result(s)",
+                        name=f"Found {total} result(s)",
                         on_enter=SetUserQueryAction('')
                     ))
 
