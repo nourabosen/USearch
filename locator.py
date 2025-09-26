@@ -31,7 +31,6 @@ class Locator:
 
     def _escape_glob_for_find(self, pattern: str) -> str:
         """Escape glob metacharacters so pattern is treated literally in -iname."""
-        # Escape characters that have special meaning in shell globs
         for char in r'[]?*{}!':
             pattern = pattern.replace(char, '\\' + char)
         return pattern
@@ -115,55 +114,54 @@ class Locator:
             return []
 
     def _run_find_on_path(self, path: str, pattern: str, timeout: int = 20) -> List[str]:
-    if not os.path.isdir(path) or not pattern.strip():
-        return []
+        if not os.path.isdir(path) or not pattern.strip():
+            return []
 
-    # Escape glob characters to avoid syntax errors in -iname
-    safe_pattern = pattern
-    for char in r'[]?*{}!':
-        safe_pattern = safe_pattern.replace(char, '\\' + char)
+        # Escape glob characters to avoid syntax errors in -iname
+        safe_pattern = pattern
+        for char in r'[]?*{}!':
+            safe_pattern = safe_pattern.replace(char, '\\' + char)
 
-    if self.find_cmd:
-        cmd = [self.find_cmd, path, "-iname", f"*{safe_pattern}*"]
-        logging.debug("Running find: %s", cmd)
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
-            # IMPORTANT: find returns:
-            #   0 = OK (matches or not)
-            #   1 = No matches found → NOT an error!
-            #   >1 = Real error (e.g. permission denied)
-            if proc.returncode > 1:
-                logging.error("find failed (code %d) on %s: %s", proc.returncode, path, proc.stderr.strip())
+        if self.find_cmd:
+            cmd = [self.find_cmd, path, "-iname", f"*{safe_pattern}*"]
+            logging.debug("Running find: %s", cmd)
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout
+                )
+                # find returns:
+                #   0 = OK (matches or not)
+                #   1 = No matches → NOT an error!
+                #   >1 = Real error
+                if proc.returncode > 1:
+                    logging.error("find failed (code %d) on %s: %s", proc.returncode, path, proc.stderr.strip())
+                    return []
+                out = proc.stdout or ""
+                lines = [l.strip() for l in out.splitlines() if l.strip()]
+                logging.debug("find(%s) returned %d results", path, len(lines))
+                return lines
+            except subprocess.TimeoutExpired:
+                logging.warning("find timed out on %s", path)
                 return []
-            # Otherwise, treat as success (even if 0 or 1)
-            out = proc.stdout or ""
-            lines = [l.strip() for l in out.splitlines() if l.strip()]
-            logging.debug("find(%s) returned %d results", path, len(lines))
-            return lines
-        except subprocess.TimeoutExpired:
-            logging.warning("find timed out on %s", path)
-            return []
-        except Exception as e:
-            logging.exception("Unexpected error in find on %s: %s", path, e)
-            return []
-    else:
-        # Fallback to os.walk
-        logging.debug("Using os.walk fallback on %s", path)
-        matches = []
-        want = pattern.lower()
-        try:
-            for root, _, files in os.walk(path):
-                for f in files:
-                    if want in f.lower():
-                        matches.append(os.path.join(root, f))
-        except Exception as e:
-            logging.exception("os.walk failed on %s: %s", path, e)
-        return matches
+            except Exception as e:
+                logging.exception("Unexpected error in find on %s: %s", path, e)
+                return []
+        else:
+            # Fallback to os.walk
+            logging.debug("Using os.walk fallback on %s", path)
+            matches = []
+            want = pattern.lower()
+            try:
+                for root, _, files in os.walk(path):
+                    for f in files:
+                        if want in f.lower():
+                            matches.append(os.path.join(root, f))
+            except Exception as e:
+                logging.exception("os.walk failed on %s: %s", path, e)
+            return matches
 
     def _run_find(self, pattern: str) -> List[str]:
         if not pattern or not pattern.strip():
