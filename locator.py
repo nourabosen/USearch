@@ -1,10 +1,12 @@
 import subprocess
+import glob
+import os
 
 
 class Locator:
     def __init__(self):
         self.cmd = 'locate' if self.__check_has_locate() else None
-        self.limit = 10   # total results (split between locate + find)
+        self.limit = 10
         self.opt = ''
 
     def set_limit(self, limit):
@@ -42,24 +44,29 @@ class Locator:
             return []
 
     def __run_find(self, pattern):
-        # Search hardware-mounted drives
-        search_dirs = ["/run/media", "/mnt"]
-        cmd = ["find"] + search_dirs + ["-iname", f"*{pattern}*"]
-        print('[Locator] Running find:', cmd)
-        try:
-            output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
-            return output.decode().splitlines()
-        except subprocess.CalledProcessError:
-            return []
+        # Dynamically detect mounted hardware paths under /run/media and /mnt
+        search_dirs = []
+        search_dirs.extend(glob.glob("/run/media/*/*"))  # e.g. /run/media/nour/UUID
+        search_dirs.extend(glob.glob("/mnt/*"))
+
+        results = []
+        for path in search_dirs:
+            if os.path.isdir(path):
+                cmd = ["find", path, "-iname", f"*{pattern}*"]
+                print('[Locator] Running find:', cmd)
+                try:
+                    output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
+                    results.extend(output.decode().splitlines())
+                except subprocess.CalledProcessError:
+                    continue
+        return results
 
     def run(self, pattern):
         if not pattern:
             return []
 
-        # Run both searches
         locate_results = self.__run_locate(pattern)
         find_results = self.__run_find(pattern)
 
-        # Merge & respect global limit
         combined = locate_results + find_results
         return combined[:self.limit]
