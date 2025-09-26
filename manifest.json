@@ -16,13 +16,6 @@
       "default_value": "s"
     },
     {
-      "id": "limit",
-      "type": "input",
-      "name": "Maximum number of results per page",
-      "description": "Number of results shown per page in Ulauncher (used for pagination).",
-      "default_value": "10"
-    },
-    {
       "id": "hardware_prefix",
       "type": "input",
       "name": "Hardware search prefix",
@@ -35,6 +28,13 @@
       "name": "Raw locate prefix",
       "description": "Prefix to trigger raw plocate/locate mode (default: r). Example: 'r -r pattern'",
       "default_value": "r"
+    },
+    {
+      "id": "limit",
+      "type": "input",
+      "name": "Maximum number of results per page",
+      "description": "Number of results shown per page in Ulauncher (used for pagination).",
+      "default_value": "10"
     }
   ]
 }
