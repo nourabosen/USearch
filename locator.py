@@ -72,7 +72,7 @@ class Locator:
         print(f"Discovered {len(out)} hardware paths: {out}")
         return out
 
-    def _run_find(self, pattern: str) -> List[str]:
+    def _run_find(self, pattern: str, search_folders: bool = False) -> List[str]:
         """Run find on hardware-mounted drives - optimized version."""
         paths = self._discover_hardware_paths()
         if not paths:
@@ -84,14 +84,20 @@ class Locator:
             return []
 
         all_results = []
-        print(f"Searching for pattern: '{pattern}' in hardware paths")
+        print(f"Searching for pattern: '{pattern}' in hardware paths (folders: {search_folders})")
         
         for path in paths:
             try:
                 print(f"Searching in: {path}")
                 # Use -maxdepth 3 to avoid deep recursion and speed up search
-                # Use -type f to only search files, not directories
-                cmd = [self.find_cmd, path, "-maxdepth", "3", "-type", "f", "-iname", f"*{pattern}*"]
+                cmd = [self.find_cmd, path, "-maxdepth", "3"]
+                
+                if search_folders:
+                    # Search for directories only
+                    cmd.extend(["-type", "d", "-iname", f"*{pattern}*"])
+                else:
+                    # Search for files only (default)
+                    cmd.extend(["-type", "f", "-iname", f"*{pattern}*"])
                 
                 # Run with timeout to prevent hanging
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
@@ -116,6 +122,41 @@ class Locator:
         print(f"Total hardware results: {len(all_results)}")
         return all_results
 
+    def _run_locate(self, pattern: str, search_folders: bool = False) -> List[str]:
+        """Run locate command with optional folder search."""
+        if search_folders:
+            # For folder search, we need to filter results to directories only
+            cmd = [self.cmd, '-i', '-l', str(self.limit * 2), pattern]  # Get more results to filter
+        else:
+            cmd = [self.cmd, '-i', '-l', str(self.limit), pattern]
+        
+        print(f'Executing locate command: {" ".join(cmd)}')
+        
+        try:
+            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True, timeout=5)
+            results = [line for line in output.splitlines() if line.strip()]
+            
+            if search_folders:
+                # Filter to only include directories
+                folder_results = []
+                for result in results:
+                    if os.path.isdir(result):
+                        folder_results.append(result)
+                    if len(folder_results) >= self.limit:
+                        break
+                print(f"Locate found {len(folder_results)} folders (filtered from {len(results)} results)")
+                return folder_results
+            else:
+                print(f"Locate found {len(results)} results")
+                return results
+                
+        except subprocess.CalledProcessError as e:
+            print(f"Locate command failed: {e}")
+            return []
+        except subprocess.TimeoutExpired:
+            print("Locate command timed out")
+            return []
+
     def run(self, pattern):
         if not self.cmd:
             raise RuntimeError('Neither plocate nor locate commands found')
@@ -125,11 +166,19 @@ class Locator:
         tokens = pattern.strip().split()
         print(f"Search pattern: '{pattern}', tokens: {tokens}")
         
+        # Check for folder search mode
+        search_folders = False
+        if tokens[0].lower() == 'folder' and len(tokens) > 1:
+            search_folders = True
+            tokens = tokens[1:]  # Remove 'folder' prefix
+            pattern = ' '.join(tokens)
+            print(f"Folder search mode enabled for: '{pattern}'")
+        
         # Hardware-only mode: "hw <pattern>"
         if tokens[0].lower() == 'hw' and len(tokens) > 1:
             search_pattern = ' '.join(tokens[1:])
-            print(f"Hardware-only search for: '{search_pattern}'")
-            return self._run_find(search_pattern)
+            print(f"Hardware-only search for: '{search_pattern}' (folders: {search_folders})")
+            return self._run_find(search_pattern, search_folders)
         
         # Raw mode: "r <args>"
         if tokens[0].lower() == 'r' and len(tokens) > 1:
@@ -144,25 +193,13 @@ class Locator:
         
         # Normal mode: combined search
         search_pattern = pattern
-        locate_cmd = [self.cmd, '-i', '-l', str(self.limit), search_pattern]
-        print(f'Executing locate command: {" ".join(locate_cmd)}')
-        
-        locate_results = []
-        try:
-            locate_output = subprocess.check_output(locate_cmd, stderr=subprocess.STDOUT, text=True, timeout=5)
-            locate_results = [line for line in locate_output.splitlines() if line.strip()]
-            print(f"Locate found {len(locate_results)} results")
-        except subprocess.CalledProcessError as e:
-            print(f"Locate command failed: {e}")
-            locate_results = []
-        except subprocess.TimeoutExpired:
-            print("Locate command timed out")
-            locate_results = []
+        locate_results = self._run_locate(search_pattern, search_folders)
+        print(f"Locate found {len(locate_results)} results")
 
         # Always run hardware search but only if we have a pattern
         hardware_results = []
         if search_pattern.strip():
-            hardware_results = self._run_find(search_pattern)
+            hardware_results = self._run_find(search_pattern, search_folders)
             print(f"Hardware search found {len(hardware_results)} results")
 
         # Combine results - remove duplicates
