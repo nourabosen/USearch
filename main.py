@@ -69,7 +69,9 @@ class KeywordQueryEventListener(EventListener):
             items = self.__help()
         else:
             try:
+                print(f"Ulauncher searching for: '{arg}'")
                 results = locator.run(arg)
+                print(f"Ulauncher got {len(results)} results")
                 
                 if not results:
                     items.append(ExtensionSmallResultItem(
@@ -108,6 +110,7 @@ class KeywordQueryEventListener(EventListener):
                         
             except Exception as e:
                 error_info = str(e)
+                print(f"Ulauncher error: {error_info}")
                 items = [ExtensionSmallResultItem(
                     icon='images/error.png',
                     name='Search error',
