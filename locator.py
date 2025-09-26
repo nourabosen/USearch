@@ -15,84 +15,74 @@ class Locator:
     def __init__(self):
         self.locate_cmd = shutil.which("plocate") or shutil.which("locate")
         self.find_cmd = shutil.which("find")
-        self.limit = None  # main.py handles pagination
+        self.limit = None  # Not used for truncation
 
     def set_limit(self, limit):
-        # Keep for compatibility, but not used for truncation
+        # Keep for compatibility; main.py uses it for pagination
         try:
             self.limit = int(limit)
-        except (ValueError, TypeError):
+        except:
             self.limit = None
 
     def _discover_mounts(self) -> List[str]:
         paths = []
-        bases = ["/run/media", "/media", "/mnt"]
-        for base in bases:
+        for base in ["/run/media", "/media", "/mnt"]:
             if os.path.isdir(base):
                 try:
                     for entry in os.listdir(base):
                         full = os.path.join(base, entry)
                         if os.path.isdir(full):
                             paths.append(full)
-                except Exception:
+                except:
                     pass
         return paths
 
-    def _escape_find_pattern(self, pattern: str) -> str:
-        for char in r'[]?*{}!':
-            pattern = pattern.replace(char, '\\' + char)
-        return pattern
+    def _escape_pattern(self, pat: str) -> str:
+        for c in r'[]?*{}!':
+            pat = pat.replace(c, '\\' + c)
+        return pat
 
-    def _run_find_on_path(self, path: str, pattern: str, timeout: int = 8) -> List[str]:
-        if not pattern.strip() or not os.path.isdir(path):
-            return []
-        safe_pattern = self._escape_find_pattern(pattern)
-        if self.find_cmd:
-            cmd = [self.find_cmd, path, "-iname", f"*{safe_pattern}*"]
-            try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-                if result.returncode > 1:
-                    return []
-                return [line.strip() for line in result.stdout.splitlines() if line.strip()]
-            except:
-                return []
-        else:
-            # Fallback to os.walk
-            matches = []
-            want = pattern.lower()
-            try:
-                for root, _, files in os.walk(path):
-                    for f in files:
-                        if want in f.lower():
-                            matches.append(os.path.join(root, f))
-            except:
-                pass
-            return matches
-
-    def _run_find(self, pattern: str) -> List[str]:
+    def _search_hardware(self, pattern: str) -> List[str]:
         if not pattern.strip():
             return []
         results = []
+        safe_pat = self._escape_pattern(pattern)
         for path in self._discover_mounts():
-            results.extend(self._run_find_on_path(path, pattern))
+            if self.find_cmd:
+                try:
+                    cmd = [self.find_cmd, path, "-iname", f"*{safe_pat}*"]
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+                    if res.returncode <= 1:  # 0=ok, 1=no matches
+                        results.extend(line.strip() for line in res.stdout.splitlines() if line.strip())
+                except:
+                    pass
+            else:
+                # Fallback to os.walk
+                try:
+                    for root, _, files in os.walk(path):
+                        for f in files:
+                            if pattern.lower() in f.lower():
+                                results.append(os.path.join(root, f))
+                except:
+                    pass
         return results
 
-    def _run_locate(self, tokens: List[str], raw_mode: bool = False) -> List[str]:
+    def _run_locate(self, tokens: List[str], raw: bool = False) -> List[str]:
         if not self.locate_cmd:
             return []
-        if raw_mode:
-            cmd = [self.locate_cmd] + tokens
-        else:
-            cmd = [self.locate_cmd, "-i", " ".join(tokens)] if tokens else [self.locate_cmd, "-i", ""]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=6)
-            if result.returncode not in (0, 1):
-                return []
-            return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            if raw:
+                cmd = [self.locate_cmd] + tokens
+            else:
+                cmd = [self.locate_cmd, "-i", " ".join(tokens)] if tokens else [self.locate_cmd, "-i", ""]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=6)
+            if res.returncode in (0, 1):
+                return [line.strip() for line in res.stdout.splitlines() if line.strip()]
         except:
-            return []
+            pass
+        return []
 
-    def _unique_preserve_order(self, items: List[str]) -> List[str]:
+    def _dedupe(self, items: List[str]) -> List[str]:
         seen = set()
         out = []
         for x in items:
@@ -109,14 +99,13 @@ class Locator:
 
         # Hardware-only mode
         if tokens[0].lower() == "hw" and len(tokens) > 1:
-            search_term = " ".join(tokens[1:])
-            return self._unique_preserve_order(self._run_find(search_term))
+            return self._dedupe(self._search_hardware(" ".join(tokens[1:])))
 
-        # Raw locate mode
-        raw_mode = tokens[0].lower() == "r" and len(tokens) > 1
-        locate_tokens = tokens[1:] if raw_mode else tokens
+        # Raw mode
+        raw = tokens[0].lower() == "r" and len(tokens) > 1
+        locate_tokens = tokens[1:] if raw else tokens
 
-        locate_results = self._run_locate(locate_tokens, raw_mode=raw_mode)
-        find_results = self._run_find(" ".join(locate_tokens)) if not raw_mode else []
+        locate_results = self._run_locate(locate_tokens, raw_mode=raw)
+        hardware_results = [] if raw else self._search_hardware(" ".join(locate_tokens))
 
-        return self._unique_preserve_order(locate_results + find_results)
+        return self._dedupe(locate_results + hardware_results)
