@@ -26,10 +26,16 @@ class PreferencesUpdateEventListener(EventListener):
     def on_event(self, event, extension):
         if event.id == 'limit':
             locator.set_limit(event.new_value)
+        elif event.id == 'hardware_prefix':
+            locator.set_hardware_prefix(event.new_value)
+        elif event.id == 'raw_prefix':
+            locator.set_raw_prefix(event.new_value)
 
 class PreferencesEventListener(EventListener):
     def on_event(self, event, extension):
         locator.set_limit(event.preferences['limit'])
+        locator.set_hardware_prefix(event.preferences['hardware_prefix'])
+        locator.set_raw_prefix(event.preferences['raw_prefix'])
 
 class ItemEnterEventListener(EventListener):
     def on_event(self, event, extension):
@@ -44,20 +50,23 @@ class ItemEnterEventListener(EventListener):
 class KeywordQueryEventListener(EventListener):
     def __help(self):
         items = []
-        items.append(ExtensionSmallResultItem(icon='images/info.png',
+        items.append(ExtensionSmallResultItem(
+            icon='images/info.png',
             name='Normal search: s <pattern>',
             description='Fast indexed search + hardware drives',
             on_enter=SetUserQueryAction('s ')
         ))
-        items.append(ExtensionSmallResultItem(icon='images/hardware.png',
-            name='Hardware search: s hw <pattern>',
+        items.append(ExtensionSmallResultItem(
+            icon='images/hardware.png',
+            name=f'Hardware search: s {locator.hardware_prefix} <pattern>',
             description='Search only mounted drives (/media, /mnt, /run/media)',
-            on_enter=SetUserQueryAction('s hw ')
+            on_enter=SetUserQueryAction(f's {locator.hardware_prefix} ')
         ))
-        items.append(ExtensionSmallResultItem(icon='images/raw.png',
-            name='Raw locate: s r <args>',
+        items.append(ExtensionSmallResultItem(
+            icon='images/raw.png',
+            name=f'Raw locate: s {locator.raw_prefix} <args>',
             description='Raw plocate/locate arguments',
-            on_enter=SetUserQueryAction('s r ')
+            on_enter=SetUserQueryAction(f's {locator.raw_prefix} ')
         ))
         return items
                 
@@ -77,26 +86,25 @@ class KeywordQueryEventListener(EventListener):
                     items.append(ExtensionSmallResultItem(
                         icon='images/warning.png',
                         name='No results found',
-                        description=f'No files matching "{arg}"',
+                        description=f'No files matching \"{arg}\"',
                         on_enter=SetUserQueryAction('s ')
                     ))
                 else:
                     alt_action = ExtensionCustomAction(results, True)
                     for file in results:
-                        # Truncate long filenames for display
                         display_name = file if len(file) <= 80 else f"{file[:77]}..."
                         items.append(ExtensionSmallResultItem(
                             icon='images/ok.png',
                             name=display_name,
-                            description=file,  # Full path in description
+                            description=file,
                             on_enter=OpenAction(file),
                             on_alt_enter=alt_action
                         ))
                     
                     # Add info item showing search mode
-                    if arg.lower().startswith('hw '):
+                    if arg.lower().startswith(locator.hardware_prefix + " "):
                         mode_info = "Hardware-only search"
-                    elif arg.lower().startswith('r '):
+                    elif arg.lower().startswith(locator.raw_prefix + " "):
                         mode_info = "Raw locate search"
                     else:
                         mode_info = "Combined search (indexed + hardware)"
