@@ -1,4 +1,4 @@
-# USearch — Ulauncher extension
+# USearch — Ulauncher Extension
 
 **Find files quickly using the system locate database (plocate/locate) and include mounted hardware drives by performing a live scan.**
 
