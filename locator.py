@@ -1,21 +1,18 @@
 import os
 import subprocess
+import logging
 import sys
 import shutil
+import glob
+from typing import List
 
 class Locator:
-    def __init__(self, hardware_prefix="hw", raw_prefix="r"):
+    def __init__(self):
         self.cmd = 'plocate' if self.__check_has_plocate() else 'locate'
         self.find_cmd = shutil.which("find")
         self.limit = 5
-        self.hardware_prefix = hardware_prefix
-        self.raw_prefix = raw_prefix
+        self.hardware_bases = ["/run/media", "/media", "/mnt"]
         print(f"Initialized Locator: cmd={self.cmd}, find_cmd={self.find_cmd}")
-
-    def set_prefixes(self, hardware_prefix, raw_prefix):
-        self.hardware_prefix = hardware_prefix
-        self.raw_prefix = raw_prefix
-        print(f"Updated prefixes: hardware='{hardware_prefix}', raw='{raw_prefix}'")
 
     def set_limit(self, limit):
         try:
@@ -36,87 +33,87 @@ class Locator:
         except subprocess.CalledProcessError:
             return False
 
-    def _get_mounted_drives(self):
-        """Get mounted drives using mount command"""
-        drives = []
+    def _discover_hardware_paths(self) -> List[str]:
+        """Return a list of existing directories to search on external/media mounts."""
+        paths = []
         try:
-            # Use mount command to find mounted filesystems
-            result = subprocess.run(['mount'], capture_output=True, text=True, timeout=5)
-            for line in result.stdout.splitlines():
-                if '/dev/' in line:
-                    parts = line.split()
-                    if len(parts) >= 3:
-                        mount_point = parts[2]
-                        # Check if it's a hardware drive mount point
-                        if any(mount_point.startswith(path) for path in ['/run/media/', '/media/', '/mnt/']):
-                            if os.path.isdir(mount_point) and mount_point not in drives:
-                                drives.append(mount_point)
-                                print(f"Found mounted drive: {mount_point}")
-        except Exception as e:
-            print(f"Error getting mounted drives: {e}")
-        
-        # Also check the standard directories
-        standard_paths = ['/run/media', '/media', '/mnt']
-        for path in standard_paths:
-            if os.path.isdir(path):
-                try:
-                    for item in os.listdir(path):
-                        full_path = os.path.join(path, item)
-                        if os.path.isdir(full_path) and full_path not in drives:
-                            drives.append(full_path)
-                            print(f"Found standard path: {full_path}")
-                except Exception as e:
-                    print(f"Error reading {path}: {e}")
-        
-        print(f"Total drives to search: {drives}")
-        return drives
+            # /run/media/<user>/<volume>
+            base = "/run/media"
+            if os.path.isdir(base):
+                print(f"Checking {base}")
+                for user in os.listdir(base):
+                    userdir = os.path.join(base, user)
+                    if os.path.isdir(userdir):
+                        for vol in os.listdir(userdir):
+                            p = os.path.join(userdir, vol)
+                            if os.path.isdir(p):
+                                print(f"Found hardware path: {p}")
+                                paths.append(p)
 
-    def _search_with_find(self, pattern, search_path):
-        """Search using find command in a specific path"""
-        try:
-            # Simple find command: find /path -name "*pattern*" (case insensitive)
-            cmd = [self.find_cmd, search_path, '-name', f'*{pattern}*', '-type', 'f']
-            print(f"Running find: {' '.join(cmd)}")
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            
-            if result.returncode == 0:
-                files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-                print(f"Found {len(files)} files in {search_path}")
-                return files
-            else:
-                print(f"Find failed: {result.stderr}")
-                return []
-        except subprocess.TimeoutExpired:
-            print(f"Find timed out for {search_path}")
-            return []
+            # /media/* and /mnt/*
+            for base in ["/media", "/mnt"]:
+                if os.path.isdir(base):
+                    print(f"Checking {base}")
+                    for item in os.listdir(base):
+                        p = os.path.join(base, item)
+                        if os.path.isdir(p):
+                            print(f"Found hardware path: {p}")
+                            paths.append(p)
         except Exception as e:
-            print(f"Error with find in {search_path}: {e}")
-            return []
+            print(f"Error discovering hardware paths: {e}")
 
-    def _search_hardware_drives(self, pattern):
-        """Search all hardware drives for the pattern"""
+        # dedupe preserve order
+        seen = set()
+        out = []
+        for p in paths:
+            if p not in seen:
+                seen.add(p)
+                out.append(p)
+        print(f"Discovered {len(out)} hardware paths: {out}")
+        return out
+
+    def _run_find(self, pattern: str) -> List[str]:
+        """Run find on hardware-mounted drives - optimized version."""
+        paths = self._discover_hardware_paths()
+        if not paths:
+            print("No hardware paths found")
+            return []
+            
         if not self.find_cmd:
             print("No find command available")
             return []
-            
-        drives = self._get_mounted_drives()
-        if not drives:
-            print("No hardware drives found")
-            return []
-        
+
         all_results = []
-        for drive in drives:
-            print(f"Searching drive: {drive}")
-            results = self._search_with_find(pattern, drive)
-            all_results.extend(results)
-            
-            # Stop if we have enough results
-            if len(all_results) >= self.limit:
-                all_results = all_results[:self.limit]
-                break
+        print(f"Searching for pattern: '{pattern}' in hardware paths")
         
-        print(f"Hardware search found {len(all_results)} results")
+        for path in paths:
+            try:
+                print(f"Searching in: {path}")
+                # Use -maxdepth 3 to avoid deep recursion and speed up search
+                # Use -type f to only search files, not directories
+                cmd = [self.find_cmd, path, "-maxdepth", "3", "-type", "f", "-iname", f"*{pattern}*"]
+                
+                # Run with timeout to prevent hanging
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                
+                if result.returncode == 0:
+                    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+                    print(f"Found {len(lines)} results in {path}")
+                    all_results.extend(lines)
+                    
+                    # Stop if we have enough results
+                    if len(all_results) >= self.limit:
+                        all_results = all_results[:self.limit]
+                        break
+                else:
+                    print(f"Find failed in {path}: {result.stderr}")
+                    
+            except subprocess.TimeoutExpired:
+                print(f"Find timed out in {path}")
+            except Exception as e:
+                print(f"Error searching {path}: {e}")
+
+        print(f"Total hardware results: {len(all_results)}")
         return all_results
 
     def run(self, pattern):
@@ -126,75 +123,53 @@ class Locator:
             raise RuntimeError('No search pattern provided')
         
         tokens = pattern.strip().split()
-        print(f"Search pattern: '{pattern}'")
+        print(f"Search pattern: '{pattern}', tokens: {tokens}")
         
-        # Hardware-only mode
-        if tokens and tokens[0].lower() == self.hardware_prefix.lower() and len(tokens) > 1:
+        # Hardware-only mode: "hw <pattern>"
+        if tokens[0].lower() == 'hw' and len(tokens) > 1:
             search_pattern = ' '.join(tokens[1:])
-            print(f"HARDWARE-ONLY SEARCH: '{search_pattern}'")
-            return self._search_hardware_drives(search_pattern)
+            print(f"Hardware-only search for: '{search_pattern}'")
+            return self._run_find(search_pattern)
         
-        # Raw mode
-        if tokens and tokens[0].lower() == self.raw_prefix.lower() and len(tokens) > 1:
+        # Raw mode: "r <args>"
+        if tokens[0].lower() == 'r' and len(tokens) > 1:
             raw_args = tokens[1:]
             cmd = [self.cmd] + raw_args
-            print(f'RAW SEARCH: {" ".join(cmd)}')
+            print(f'Executing raw command: {" ".join(cmd)}')
             try:
                 output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
                 return [line for line in output.splitlines() if line.strip()]
             except subprocess.CalledProcessError as e:
-                raise RuntimeError(f"Command failed: {e.output}")
+                raise RuntimeError(f"Command failed with exit status {e.returncode}: {e.output}")
         
-        # Normal mode - locate only (for now, to test)
+        # Normal mode: combined search
         search_pattern = pattern
-        print(f'NORMAL SEARCH: "{search_pattern}"')
+        locate_cmd = [self.cmd, '-i', '-l', str(self.limit), search_pattern]
+        print(f'Executing locate command: {" ".join(locate_cmd)}')
         
+        locate_results = []
         try:
-            cmd = [self.cmd, '-i', '-l', str(self.limit), search_pattern]
-            print(f'Locate command: {" ".join(cmd)}')
-            
-            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True, timeout=5)
-            results = [line for line in output.splitlines() if line.strip()]
-            print(f"Locate found {len(results)} results")
-            return results
+            locate_output = subprocess.check_output(locate_cmd, stderr=subprocess.STDOUT, text=True, timeout=5)
+            locate_results = [line for line in locate_output.splitlines() if line.strip()]
+            print(f"Locate found {len(locate_results)} results")
         except subprocess.CalledProcessError as e:
-            print(f"Locate failed: {e}")
-            return []
-        except Exception as e:
-            print(f"Search error: {e}")
-            return []
+            print(f"Locate command failed: {e}")
+            locate_results = []
+        except subprocess.TimeoutExpired:
+            print("Locate command timed out")
+            locate_results = []
 
+        # Always run hardware search but only if we have a pattern
+        hardware_results = []
+        if search_pattern.strip():
+            hardware_results = self._run_find(search_pattern)
+            print(f"Hardware search found {len(hardware_results)} results")
 
-# Test the hardware search
-if __name__ == "__main__":
-    # Test hardware search specifically
-    if len(sys.argv) > 1 and sys.argv[1] == "test":
-        print("=== TESTING HARDWARE SEARCH ===")
-        locator = Locator()
-        
-        # Test 1: List mounted drives
-        print("\n1. Listing mounted drives:")
-        drives = locator._get_mounted_drives()
-        print(f"Found {len(drives)} drives: {drives}")
-        
-        # Test 2: Search for a test pattern
-        if drives:
-            test_pattern = "test" if len(sys.argv) <= 2 else sys.argv[2]
-            print(f"\n2. Searching for '{test_pattern}':")
-            results = locator._search_hardware_drives(test_pattern)
-            print(f"Found {len(results)} results: {results}")
-        else:
-            print("No drives found to test with")
-            
-    else:
-        # Normal operation
-        q = " ".join(sys.argv[1:]).strip() if len(sys.argv) > 1 else ""
-        loc = Locator()
-        if not q:
-            print("Usage: python3 locator.py <query>")
-            print("       python3 locator.py test [pattern]  (test hardware search)")
-            sys.exit(0)
-        res = loc.run(q)
-        print(f"Found {len(res)} results:")
-        for i, r in enumerate(res, 1):
-            print(f"{i}: {r}")
+        # Combine results - remove duplicates
+        combined_results = locate_results.copy()
+        for result in hardware_results:
+            if result not in combined_results and len(combined_results) < self.limit:
+                combined_results.append(result)
+
+        print(f"Total combined results: {len(combined_results)}")
+        return combined_results[:self.limit]
