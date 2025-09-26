@@ -12,7 +12,6 @@ from ulauncher.api.shared.event import ItemEnterEvent
 from ulauncher.api.shared.action.ExtensionCustomAction import ExtensionCustomAction
 from locator import Locator
 
-# Global locator instance with default prefixes
 locator = Locator()
 
 class SearchFileExtension(Extension):
@@ -27,27 +26,10 @@ class PreferencesUpdateEventListener(EventListener):
     def on_event(self, event, extension):
         if event.id == 'limit':
             locator.set_limit(event.new_value)
-        elif event.id == 'hardware_prefix':
-            # Get current raw prefix to update both together
-            raw_prefix = extension.preferences.get('raw_prefix', 'r')
-            locator.set_prefixes(event.new_value, raw_prefix)
-        elif event.id == 'raw_prefix':
-            # Get current hardware prefix to update both together
-            hardware_prefix = extension.preferences.get('hardware_prefix', 'hw')
-            locator.set_prefixes(hardware_prefix, event.new_value)
 
 class PreferencesEventListener(EventListener):
     def on_event(self, event, extension):
-        # Set initial preferences
-        locator.set_limit(event.preferences.get('limit', '10'))
-        
-        # Set initial prefixes
-        hardware_prefix = event.preferences.get('hardware_prefix', 'hw')
-        raw_prefix = event.preferences.get('raw_prefix', 'r')
-        locator.set_prefixes(hardware_prefix, raw_prefix)
-        
-        print(f"Preferences loaded: limit={event.preferences.get('limit', '10')}, "
-              f"hardware_prefix='{hardware_prefix}', raw_prefix='{raw_prefix}'")
+        locator.set_limit(event.preferences['limit'])
 
 class ItemEnterEventListener(EventListener):
     def on_event(self, event, extension):
@@ -60,27 +42,22 @@ class ItemEnterEventListener(EventListener):
         return RenderResultListAction(items)
 
 class KeywordQueryEventListener(EventListener):
-    def __help(self, hardware_prefix='hw', raw_prefix='r'):
+    def __help(self):
         items = []
         items.append(ExtensionSmallResultItem(icon='images/info.png',
-            name=f'Normal search: s <pattern>',
+            name='Normal search: s <pattern>',
             description='Fast indexed search + hardware drives',
             on_enter=SetUserQueryAction('s ')
         ))
         items.append(ExtensionSmallResultItem(icon='images/hardware.png',
-            name=f'Hardware search: s {hardware_prefix} <pattern>',
+            name='Hardware search: s hw <pattern>',
             description='Search only mounted drives (/media, /mnt, /run/media)',
-            on_enter=SetUserQueryAction(f's {hardware_prefix} ')
+            on_enter=SetUserQueryAction('s hw ')
         ))
         items.append(ExtensionSmallResultItem(icon='images/raw.png',
-            name=f'Raw locate: s {raw_prefix} <args>',
+            name='Raw locate: s r <args>',
             description='Raw plocate/locate arguments',
-            on_enter=SetUserQueryAction(f's {raw_prefix} ')
-        ))
-        items.append(ExtensionSmallResultItem(icon='images/settings.png',
-            name='Customize search prefixes in preferences',
-            description=f'Current: {hardware_prefix}=hardware, {raw_prefix}=raw',
-            on_enter=SetUserQueryAction('ulauncher-preferences')
+            on_enter=SetUserQueryAction('s r ')
         ))
         return items
                 
@@ -89,10 +66,7 @@ class KeywordQueryEventListener(EventListener):
         items = []
 
         if arg is None or arg.strip() == '':
-            # Get current prefixes for help display
-            hardware_prefix = extension.preferences.get('hardware_prefix', 'hw')
-            raw_prefix = extension.preferences.get('raw_prefix', 'r')
-            items = self.__help(hardware_prefix, raw_prefix)
+            items = self.__help()
         else:
             try:
                 print(f"Ulauncher searching for: '{arg}'")
@@ -120,13 +94,10 @@ class KeywordQueryEventListener(EventListener):
                         ))
                     
                     # Add info item showing search mode
-                    hardware_prefix = extension.preferences.get('hardware_prefix', 'hw')
-                    raw_prefix = extension.preferences.get('raw_prefix', 'r')
-                    
-                    if arg.lower().startswith(f'{hardware_prefix.lower()} '):
-                        mode_info = f"Hardware-only search (prefix: {hardware_prefix})"
-                    elif arg.lower().startswith(f'{raw_prefix.lower()} '):
-                        mode_info = f"Raw locate search (prefix: {raw_prefix})"
+                    if arg.lower().startswith('hw '):
+                        mode_info = "Hardware-only search"
+                    elif arg.lower().startswith('r '):
+                        mode_info = "Raw locate search"
                     else:
                         mode_info = "Combined search (indexed + hardware)"
                     
