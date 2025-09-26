@@ -45,7 +45,7 @@ class ItemEnterEventListener(EventListener):
 class KeywordQueryEventListener(EventListener):
     def __help(self):
         items = []
-        items.append(ExtensionSmallResultItem(icon='images/info.png',
+        items.append(ExtensionSmallResultItem(icon='images/file.png',
             name='File search: s <pattern>',
             description='Fast indexed search + hardware drives',
             on_enter=SetUserQueryAction('s ')
@@ -86,12 +86,14 @@ class KeywordQueryEventListener(EventListener):
                 
                 if not results:
                     # Determine search type for better error message
-                    if arg.lower().startswith('folder'):
-                        search_type = "folders"
-                    elif arg.lower().startswith('hw folder'):
+                    if arg.lower().startswith('hw folder'):
                         search_type = "folders on hardware drives"
+                    elif arg.lower().startswith('folder'):
+                        search_type = "folders"
                     elif arg.lower().startswith('hw'):
                         search_type = "files on hardware drives"
+                    elif arg.lower().startswith('r'):
+                        search_type = "files (raw locate)"
                     else:
                         search_type = "files"
                     
@@ -107,23 +109,24 @@ class KeywordQueryEventListener(EventListener):
                     # Determine if we're searching folders to use appropriate icons/actions
                     is_folder_search = arg.lower().startswith('folder') or arg.lower().startswith('hw folder')
                     
-                    for file in results:
+                    for file_path in results:
                         # Truncate long filenames for display
-                        display_name = file if len(file) <= 80 else f"{file[:77]}..."
+                        display_name = file_path if len(file_path) <= 80 else f"{file_path[:77]}..."
                         
                         # Use folder icon for directories, file icon for files
                         icon = 'images/folder.png' if is_folder_search else 'images/file.png'
                         
                         # For folders, open in file manager; for files, open with default app
                         if is_folder_search:
-                            enter_action = RunScriptAction(f'xdg-open "{file}"')
+                            # Use xdg-open to open folder in file manager
+                            enter_action = RunScriptAction(f'xdg-open "{file_path}"')
                         else:
-                            enter_action = OpenAction(file)
+                            enter_action = OpenAction(file_path)
                         
                         items.append(ExtensionSmallResultItem(
                             icon=icon,
                             name=display_name,
-                            description=file,  # Full path in description
+                            description=file_path,  # Full path in description
                             on_enter=enter_action,
                             on_alt_enter=alt_action
                         ))
