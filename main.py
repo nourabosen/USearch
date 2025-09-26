@@ -45,7 +45,7 @@ class ItemEnterEventListener(EventListener):
 class KeywordQueryEventListener(EventListener):
     def __help(self):
         items = []
-        items.append(ExtensionSmallResultItem(icon='images/file.png',
+        items.append(ExtensionSmallResultItem(icon='images/info.png',
             name='File search: s <pattern>',
             description='Fast indexed search + hardware drives',
             on_enter=SetUserQueryAction('s ')
@@ -57,7 +57,7 @@ class KeywordQueryEventListener(EventListener):
         ))
         items.append(ExtensionSmallResultItem(icon='images/hardware.png',
             name='Hardware files: s hw <pattern>',
-            description='Search only mounted drives',
+            description='Search only mounted drives (/media, /mnt, /run/media)',
             on_enter=SetUserQueryAction('s hw ')
         ))
         items.append(ExtensionSmallResultItem(icon='images/hardware-folder.png',
@@ -80,29 +80,30 @@ class KeywordQueryEventListener(EventListener):
             items = self.__help()
         else:
             try:
-                print(f"\n=== ULAUNCHER SEARCH ===")
-                print(f"Query: '{arg}'")
+                print(f"Ulauncher searching for: '{arg}'")
                 results = locator.run(arg)
-                print(f"Found {len(results)} results")
+                print(f"Ulauncher got {len(results)} results")
                 
                 if not results:
                     items.append(ExtensionSmallResultItem(
                         icon='images/warning.png',
                         name='No results found',
-                        description=f'Try a different search term: "{arg}"',
+                        description=f'No files or folders matching "{arg}"',
                         on_enter=SetUserQueryAction('s ')
                     ))
                 else:
                     alt_action = ExtensionCustomAction(results, True)
                     
-                    # Check if this is a folder search
-                    is_folder_search = arg.lower().startswith('folder') or arg.lower().startswith('hw folder')
-                    
                     for file_path in results:
+                        # Truncate long paths for display
                         display_name = file_path if len(file_path) <= 80 else f"{file_path[:77]}..."
-                        icon = 'images/folder.png' if is_folder_search else 'images/file.png'
                         
-                        if is_folder_search:
+                        # Check if it's a directory to determine icon and action
+                        is_directory = os.path.isdir(file_path) if os.path.exists(file_path) else file_path.endswith('/')
+                        
+                        icon = 'images/folder.png' if is_directory else 'images/file.png'
+                        
+                        if is_directory:
                             enter_action = RunScriptAction(f'xdg-open "{file_path}"')
                         else:
                             enter_action = OpenAction(file_path)
@@ -116,17 +117,16 @@ class KeywordQueryEventListener(EventListener):
                         ))
                     
                     # Add info item
-                    mode_info = "Folder search" if is_folder_search else "File search"
                     items.append(ExtensionSmallResultItem(
                         icon='images/info.png',
-                        name=f"Found {len(results)} results - {mode_info}",
+                        name=f"Found {len(results)} results",
                         description="Alt+Enter to copy all paths",
                         on_enter=SetUserQueryAction('s ')
                     ))
                         
             except Exception as e:
                 error_info = str(e)
-                print(f"ERROR: {error_info}")
+                print(f"Ulauncher error: {error_info}")
                 items = [ExtensionSmallResultItem(
                     icon='images/error.png',
                     name='Search error',
