@@ -1,26 +1,37 @@
-plocate finder
-Extension for ulauncher to quickly find files on your system using the plocate command, which provides fast file indexing and searching capabilities.
-Features
+# USearch — Ulauncher extension
 
-Fast File Search: Utilizes plocate to search files efficiently by leveraging an indexed database.
-Two Search Modes:
-Normal Mode: Search by exact file names (e.g., s davinci.png).
-Raw Mode: Use regex patterns for advanced searches (e.g., s r .png to find all PNG files).
+**Find files quickly using the system locate database (plocate/locate) and include mounted hardware drives by performing a live scan.**
 
+This fork combines the speed of `plocate` with a fallback live-search for mounted media, so external drives under `/run/media`, `/media`, or `/mnt` are discoverable even if the locate database excludes them.
 
-Result Limit: Configurable maximum number of results (default: 8).
-Actions: Press Alt+Number to open files with xdg-open or Alt+Enter to copy file paths to clipboard.
+## Features
+- Fast indexed search using `plocate` or `locate`.
+- Automatic live scanning of mounted hardware (`/run/media`, `/media`, `/mnt`) using `find`.
+- Merges and de-duplicates results (plocate results appear first).
+- Paginated result pages in Ulauncher — arrow keys navigate to the **More results** item to load the next page.
+- Supports raw locate mode: `r <locate-args>` (e.g., `s r -S .png`).
+- `Alt+Enter` on a result carries the full result list (same as previous behavior).
+- Configurable results-per-page via Ulauncher preferences (`limit`).
 
-Usage
+## Usage
+- Trigger: Type the configured keyword (default `s`) then your query.
 
-Trigger the extension with the keyword s followed by your search term.
-For raw mode, prepend r (e.g., s r .png to match files ending in .png).
-Configure preferences in Ulauncher to adjust the result limit or locate options.
+Examples:
+- `s davinci.png` — fast indexed search (plocate).
+- `s hw photo.jpg` — live scan on mounted media (searches `/run/media`, `/media`, `/mnt`).
+- `s r -S .png` — raw locate/plocate arguments (advanced).
 
-Installation
+Navigation:
+- Use Up/Down arrows to move. Press Enter on a result to open it with the default system opener.
+- The last item on a page will be `More results (...)` if additional pages exist — press Enter on it to load the next page.
+- Alt+Enter on a result triggers the alternate action (copy full results).
 
-Ensure plocate is installed (sudo apt install plocate on Debian-based systems) and the database is updated (sudo updatedb).
-Install the extension via Ulauncher's extension manager.
+## Installation
+1. Ensure `plocate` or `locate` is installed:
+   - Debian/Ubuntu (plocate): `sudo apt install plocate`
+   - Fedora (plocate): `sudo dnf install plocate`
+   - Or install `mlocate` if you prefer: `sudo apt install mlocate`
 
-Support
-For issues or suggestions, feel free to reach out to the developer, hassanradwannn.
+2. Make sure the locate database is present and up-to-date:
+   ```bash
+   sudo updatedb
