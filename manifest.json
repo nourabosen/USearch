@@ -1,7 +1,7 @@
 {
   "required_api_version": "2",
   "name": "USearch",
-  "description": "Find files and folders using plocate/locate (fast indexed search) and include mounted hardware by performing a live scan of /run/media. Shows paginated results and preserves fast behavior while enabling external drive searches.",
+  "description": "Find files and folders using plocate/locate (fast indexed search). Supports combined search, hardware-only search (mounted drives), and raw locate arguments.",
   "developer_name": "NOur Abosen",
   "icon": "images/icon.png",
   "options": {
@@ -11,16 +11,30 @@
     {
       "id": "keyword",
       "type": "keyword",
-      "name": "search files",
-      "description": "keyword to activate this plugin",
+      "name": "Search files",
+      "description": "Keyword to activate this plugin",
       "default_value": "s"
     },
     {
       "id": "limit",
       "type": "input",
-      "name": "maximum number of results per page",
+      "name": "Maximum number of results per page",
       "description": "Number of results shown per page in Ulauncher (used for pagination).",
       "default_value": "10"
+    },
+    {
+      "id": "hardware_prefix",
+      "type": "input",
+      "name": "Hardware search prefix",
+      "description": "Prefix to trigger hardware-only search mode (default: hw). Example: 'hw query'",
+      "default_value": "hw"
+    },
+    {
+      "id": "raw_prefix",
+      "type": "input",
+      "name": "Raw locate prefix",
+      "description": "Prefix to trigger raw plocate/locate mode (default: r). Example: 'r -r pattern'",
+      "default_value": "r"
     }
   ]
 }
