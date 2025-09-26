@@ -1,8 +1,8 @@
 {
   "required_api_version": "2",
-  "name": "plocate finder",
-  "description": "Quickly find files on your system using the plocate command with fast indexing.",
-  "developer_name": "hassanradwannn",
+  "name": "plocate finder (hybrid)",
+  "description": "Find files using plocate/locate (fast indexed search) and include mounted hardware by performing a live scan of /run/media. Shows paginated results and preserves fast behavior while enabling external drive searches.",
+  "developer_name": "NOur Abosen",
   "icon": "images/icon.png",
   "options": {
     "query_debounce": 0.5
@@ -18,9 +18,9 @@
     {
       "id": "limit",
       "type": "input",
-      "name": "maximum number of result",
-      "description": "result will be truncate to the maximum number",
-      "default_value": "8"
+      "name": "maximum number of results per page",
+      "description": "Number of results shown per page in Ulauncher (used for pagination).",
+      "default_value": "10"
     }
   ]
 }
