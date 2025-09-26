@@ -1,122 +1,123 @@
 # USearch — Ulauncher Extension
 
-**Quickly find files and folders using the system `plocate/locate` database, with live scans of mounted drives.**
+**Find files quickly using the system locate database (plocate/locate) and include mounted hardware drives by performing a live scan.**
 
-USearch combines the speed of `plocate` with a fallback live search, making files and folders on external drives discoverable even if they’re excluded from the locate database.
+This extension combines the speed of `plocate` with a fallback live-search for mounted media, allowing external drives under `/run/media`, `/media`, or `/mnt` to be discoverable even if the locate database excludes them.
 
----
+## Features
+- **Fast indexed search** using `plocate` or `locate`
+- **Automatic hardware drive scanning** of mounted media (`/run/media`, `/media`, `/mnt`) using `find`
+- **Three search modes:**
+  - Normal: Combined indexed + hardware search
+  - Hardware-only: Live scan only on mounted drives
+  - Raw: Direct locate arguments for advanced users
+- **Merges and de-duplicates results** (locate results appear first)
+- **Configurable results limit** via Ulauncher preferences
+- **Fast and responsive** with optimized hardware scanning
 
-## ✨ Features
+## Usage
+Trigger with your configured keyword (default: `s`) followed by your query.
 
-* **Fast indexed search** with `plocate` or `locate`
-* **Folder-only search mode** for directories
-* **Live scanning of mounted hardware** (`/run/media`, `/media`, `/mnt`) using `find`
-* **Merged results** with duplicates removed (indexed results always appear first)
-* **Paginated results** in Ulauncher (`More results` item loads the next page)
-* **Flexible search modes**:
+### Search Modes:
+- **Normal search**: `s pattern`  
+  Fast indexed search combined with hardware drive scan
+- **Hardware-only search**: `s hw pattern`  
+  Live scan only on mounted media (USB drives, external HDDs, etc.)
+- **Raw locate search**: `s r locate-args`  
+  Direct arguments to locate/plocate (e.g., `s r -i *.png`)
 
-  * `s <pattern>` — normal file search
-  * `s folder <pattern>` — directories only
-  * `s hw <pattern>` — mounted hardware only
-  * `s hw folder <pattern>` — hardware directories only
-  * `s r <locate-args>` — raw locate mode (advanced)
-* **Smart actions**:
+### Examples:
+```bash
+s project.docx              # Combined search (indexed + hardware)
+s hw vacation-photos        # Hardware drives only
+s r -i \.pdf$              # Raw regex search for PDF files
+```
 
-  * Files open with default apps
-  * Folders open in the file manager
-* **Alt+Enter** on a result copies the full result list
-* **Configurable results-per-page** via Ulauncher preferences (`limit`)
-* **Smart icons** (different for files and folders)
-* **Context-aware error messages**
+### Navigation:
+- **Enter**: Open file with default application
+- **Alt+Enter**: Copy file path to clipboard
+- Results show full path in description for easy identification
 
----
+## Installation
 
-## 🚀 Usage
+### 1. Install Dependencies
+Ensure `plocate` or `locate` is installed:
 
-### Trigger
+**Ubuntu/Debian:**
+```bash
+sudo apt update
+sudo apt install plocate  # or mlocate
+```
 
-* Default keyword: `s`
-* Example: `s project`
+**Fedora/RHEL:**
+```bash
+sudo dnf install plocate
+```
 
-### Examples
+**Arch Linux:**
+```bash
+sudo pacman -S plocate
+```
 
-* `s davinci.png` → indexed file search
-* `s folder projects` → directories only
-* `s hw photo.jpg` → live scan on mounted drives
-* `s hw folder documents` → hardware directories only
-* `s r -S .png` → pass raw arguments to `locate/plocate`
+### 2. Set up Locate Database
+Update the locate database to include your files:
 
-### Navigation
+```bash
+sudo updatedb
+```
 
-* **Enter**: Open file/folder
-* **Arrow keys**: Navigate results
-* **More results (...)**: Appears at the end of each page → press Enter to load more
-* **Alt+Enter**: Copy all results
+For automatic updates (plocate systems):
+```bash
+sudo systemctl enable --now plocate-updatedb.timer
+```
 
----
+### 3. Install Extension
+- Open Ulauncher preferences → Extensions
+- Click "Add extension" and paste the extension URL
+- Or manually copy to `~/.local/share/ulauncher/extensions/`
 
-## ⚙️ Installation
+## How It Works
 
-1. **Install `plocate` or `locate`**
+The extension intelligently combines two search methods:
 
-   * Debian/Ubuntu:
+1. **Indexed Search** (Fast): Uses `plocate/locate` with system database
+2. **Hardware Search** (Comprehensive): Uses `find` on mounted drives
 
-     ```bash
-     sudo apt install plocate
-     ```
-   * Fedora:
+### Search Locations:
+- `/run/media/*/*` - User-mounted drives (typical for USB sticks)
+- `/media/*` - System-mounted media
+- `/mnt/*` - Traditional mount points
 
-     ```bash
-     sudo dnf install plocate
-     ```
-   * Alternative (slower):
+## Configuration
 
-     ```bash
-     sudo apt install mlocate
-     ```
+Adjust settings in Ulauncher → Preferences → Extensions → USearch:
 
-2. **Initialize/refresh the database**
+- **Keyword**: Change the activation keyword (default: `s`)
+- **Limit**: Maximum number of results to display
 
+## Troubleshooting
+
+### Hardware drives not showing?
+1. Check if drives are properly mounted:
    ```bash
-   sudo updatedb
+   ls /run/media/*/* /media/* /mnt/*
    ```
 
-   For `plocate`, enable automatic updates:
+2. Verify the extension can detect paths by checking Ulauncher console logs
 
-   ```bash
-   sudo systemctl enable --now plocate-updatedb.timer
-   ```
+### Search is slow?
+- Hardware searches on large drives may take a few seconds
+- The extension uses timeouts to prevent hanging
+- Normal searches (non-hardware) remain instant
 
-3. **Install the extension**
+### No results found?
+- Ensure `plocate/locate` is installed and database is updated
+- Check file permissions on the drives you're searching
+- Try hardware-only mode: `s hw filename`
 
-   * Clone or copy this repo into your Ulauncher extensions folder
-   * Or install via the Ulauncher extension manager (if published)
 
----
+## Acknowledgments
+Based on the original work by [hassanradwannn]https://github.com/hassanradwannn).  
+Extended with hardware-mounted drive support for complete file search capability.
 
-## 📝 Notes
-
-* Searches run in two stages:
-
-  1. **Indexed search** (`plocate/locate`) → fast
-  2. **Live search** (`find` on hardware paths) → slower, especially for large drives
-* To include external drives in system indexing, edit `/etc/updatedb.conf` and remove `/run` and `/media` from `PRUNEPATHS`, then run:
-
-  ```bash
-  sudo updatedb
-  ```
-* Live search paths: `/run/media`, `/media`, `/mnt`
-
-  * You can add more in `locator.hardware_paths` inside `locator.py`
-* Indexed results are always prioritized before live scan results
-
----
-
-## 🙏 Acknowledgements
-
-* Original developer: [hassanradwannn](https://github.com/hassanradwannn)
-* Icon: [Flaticon](https://www.flaticon.com/free-icon/search-file_11677437)
-
-This fork adds:
-* Folder search modes
-* Hardware-mounted drive support
+Icon from [Flaticon](https://www.flaticon.com/free-icon/search-file_11677437)
