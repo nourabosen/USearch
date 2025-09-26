@@ -120,4 +120,4 @@ Adjust settings in Ulauncher → Preferences → Extensions → USearch:
 Based on the original work by [hassanradwannn]https://github.com/hassanradwannn).  
 Extended with hardware-mounted drive support for complete file search capability.
 
-Icon from [Flaticon](https://www.flaticon.com/free-icon/search-file_11677437)
+Icons from [Flaticon](https://www.flaticon.com/)
