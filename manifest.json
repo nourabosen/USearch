@@ -1,8 +1,8 @@
 {
   "required_api_version": "2",
   "name": "USearch",
-  "description": "Find files and folders using plocate/locate (fast indexed search). Supports combined search, hardware-only search (mounted drives), and raw locate arguments.",
-  "developer_name": "NOur Abosen",
+  "description": "Find files using plocate/locate (fast indexed search) and include mounted hardware by performing a live scan of /run/media, /media, and /mnt. Shows results with hardware drive support.",
+  "developer_name": "Nour Abosen",
   "icon": "images/icon.png",
   "options": {
     "query_debounce": 0.5
@@ -16,24 +16,10 @@
       "default_value": "s"
     },
     {
-      "id": "hardware_prefix",
-      "type": "input",
-      "name": "Hardware search prefix",
-      "description": "Prefix to trigger hardware-only search mode (default: hw). Example: 'hw query'",
-      "default_value": "hw"
-    },
-    {
-      "id": "raw_prefix",
-      "type": "input",
-      "name": "Raw locate prefix",
-      "description": "Prefix to trigger raw plocate/locate mode (default: r). Example: 'r -r pattern'",
-      "default_value": "r"
-    },
-    {
       "id": "limit",
       "type": "input",
-      "name": "Maximum number of results per page",
-      "description": "Number of results shown per page in Ulauncher (used for pagination).",
+      "name": "Maximum number of results",
+      "description": "Number of results shown in Ulauncher",
       "default_value": "10"
     }
   ]
