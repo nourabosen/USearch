@@ -33,14 +33,13 @@ class PreferencesUpdateEventListener(EventListener):
 
 class PreferencesEventListener(EventListener):
     def on_event(self, event, extension):
-        locator.set_limit(event.preferences.get('limit', '10'))
+        locator.set_limit(event.preferences.get('limit'))
 
 class ItemEnterEventListener(EventListener):
     def on_event(self, event, extension):
-        data = event.get_data()
+        results = event.get_data()
         items = []
-        results = data if isinstance(data, list) else []
-        for f in results[:10]:
+        for f in (results or [])[:10]:
             items.append(ExtensionSmallResultItem(
                 icon='images/copy.png',
                 name=f,
@@ -53,12 +52,12 @@ class KeywordQueryEventListener(EventListener):
         return [
             ExtensionSmallResultItem(
                 icon='images/info.png',
-                name='s <pattern> — indexed + hardware search',
+                name='s <file> — search everywhere (indexed + USB drives)',
                 on_enter=SetUserQueryAction('s ')
             ),
             ExtensionSmallResultItem(
                 icon='images/info.png',
-                name='s hw <pattern> — search only mounted drives',
+                name='s hw <file> — search only USB/external drives',
                 on_enter=SetUserQueryAction('s hw ')
             ),
             ExtensionSmallResultItem(
@@ -75,11 +74,12 @@ class KeywordQueryEventListener(EventListener):
 
         try:
             results = locator.run(arg)
-            per_page = int(locator.limit) if locator.limit and locator.limit > 0 else 10
-            page_results = results[:per_page]
+            # Apply limit from preferences (default 10)
+            limit = int(locator.limit) if locator.limit and str(locator.limit).isdigit() else 10
+            display_results = results[:limit]
 
             items = []
-            for file in page_results:
+            for file in display_results:
                 items.append(ExtensionSmallResultItem(
                     icon='images/ok.png',
                     name=file,
@@ -87,13 +87,7 @@ class KeywordQueryEventListener(EventListener):
                     on_alt_enter=ExtensionCustomAction(results, keep_app_open=True)
                 ))
 
-            if len(results) > per_page:
-                items.append(ExtensionSmallResultItem(
-                    icon='images/info.png',
-                    name=f"More results ({len(results) - per_page} remaining) — press Enter",
-                    on_enter=ExtensionCustomAction(results, keep_app_open=True)
-                ))
-            elif not results:
+            if not results:
                 items.append(ExtensionSmallResultItem(
                     icon='images/info.png',
                     name="No results found",
