@@ -1,7 +1,6 @@
 import subprocess
 import shutil
 import os
-import glob
 import logging
 from typing import List
 
@@ -19,7 +18,6 @@ class Locator:
         self.locate_cmd = shutil.which("plocate") or shutil.which("locate")
         self.find_cmd = shutil.which("find")
         self.limit = None  # Pagination handled by main.py
-        self.hardware_bases = ["/run/media", "/media", "/mnt"]
 
         logging.debug("Locator init; locate_cmd=%s find_cmd=%s", self.locate_cmd, self.find_cmd)
 
@@ -31,62 +29,66 @@ class Locator:
             logging.exception("set_limit: invalid value: %s", limit)
             self.limit = None
 
+    def _escape_glob_for_find(self, pattern: str) -> str:
+        """Escape glob metacharacters so pattern is treated literally in -iname."""
+        # Escape characters that have special meaning in shell globs
+        for char in r'[]?*{}!':
+            pattern = pattern.replace(char, '\\' + char)
+        return pattern
+
     def _discover_hardware_paths(self) -> List[str]:
-    """Discover active mount points under /run/media, /media, and /mnt."""
-    paths = []
-    try:
-        # Handle /run/media/*/* (user-specific mounts)
-        run_media = "/run/media"
-        if os.path.isdir(run_media):
-            for user in os.listdir(run_media):
-                user_path = os.path.join(run_media, user)
-                if os.path.isdir(user_path):
+        """Discover active mount points under /run/media, /media, and /mnt."""
+        paths = []
+        try:
+            # Handle /run/media/<user>/<volume>
+            run_media = "/run/media"
+            if os.path.isdir(run_media):
+                for user in os.listdir(run_media):
+                    user_path = os.path.join(run_media, user)
+                    if os.path.isdir(user_path):
+                        try:
+                            for vol in os.listdir(user_path):
+                                full_path = os.path.join(user_path, vol)
+                                if os.path.isdir(full_path):
+                                    paths.append(full_path)
+                        except (PermissionError, OSError):
+                            logging.warning("Permission or access error: %s", user_path)
+
+            # Handle /media/* and /mnt/*
+            for base in ["/media", "/mnt"]:
+                if os.path.isdir(base):
                     try:
-                        for vol in os.listdir(user_path):
-                            full_path = os.path.join(user_path, vol)
+                        for entry in os.listdir(base):
+                            full_path = os.path.join(base, entry)
                             if os.path.isdir(full_path):
                                 paths.append(full_path)
-                    except PermissionError:
-                        logging.warning("Permission denied: %s", user_path)
+                    except (PermissionError, OSError):
+                        logging.warning("Permission or access error: %s", base)
 
-        # Handle /media/* and /mnt/*
-        for base in ["/media", "/mnt"]:
-            if os.path.isdir(base):
-                try:
-                    for entry in os.listdir(base):
-                        full_path = os.path.join(base, entry)
-                        if os.path.isdir(full_path):
-                            paths.append(full_path)
-                except PermissionError:
-                    logging.warning("Permission denied: %s", base)
-
-        # Also explicitly check if /run/media/nour/... exists (debug fallback)
-        explicit_paths = [
-            f"/run/media/{os.getlogin()}",
-            "/run/media/nour"  # hardcode your user if needed for testing
-        ]
-        for ep in explicit_paths:
-            if os.path.isdir(ep):
-                try:
-                    for vol in os.listdir(ep):
-                        p = os.path.join(ep, vol)
+            # Explicit fallback for current user (e.g., /run/media/nour)
+            try:
+                current_user = os.getlogin()
+                explicit_path = f"/run/media/{current_user}"
+                if os.path.isdir(explicit_path):
+                    for vol in os.listdir(explicit_path):
+                        p = os.path.join(explicit_path, vol)
                         if os.path.isdir(p) and p not in paths:
                             paths.append(p)
-                except Exception:
-                    pass
+            except Exception:
+                pass  # os.getlogin() may fail in some environments
 
-    except Exception:
-        logging.exception("Error during hardware path discovery")
+        except Exception:
+            logging.exception("Error during hardware path discovery")
 
-    # Deduplicate
-    seen = set()
-    out = []
-    for p in paths:
-        if p not in seen:
-            seen.add(p)
-            out.append(p)
-    logging.debug("Final discovered hardware paths: %s", out)
-    return out
+        # Deduplicate while preserving order
+        seen = set()
+        out = []
+        for p in paths:
+            if p not in seen:
+                seen.add(p)
+                out.append(p)
+        logging.debug("Final discovered hardware paths: %s", out)
+        return out
 
     def _run_locate(self, tokens: List[str], raw_mode: bool = False) -> List[str]:
         if not self.locate_cmd:
@@ -113,17 +115,23 @@ class Locator:
             return []
 
     def _run_find_on_path(self, path: str, pattern: str, timeout: int = 20) -> List[str]:
-        if not os.path.isdir(path):
+        if not os.path.isdir(path) or not pattern.strip():
             return []
 
+        # Escape glob characters to avoid find syntax errors
+        safe_pattern = self._escape_glob_for_find(pattern)
+
         if self.find_cmd:
-            cmd = [self.find_cmd, path, "-iname", f"*{pattern}*"]
+            cmd = [self.find_cmd, path, "-iname", f"*{safe_pattern}*"]
             logging.debug("Running find: %s", cmd)
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
                 out = proc.stdout or ""
                 if proc.stderr:
                     logging.debug("find stderr (path=%s): %s", path, proc.stderr.strip())
+                # Note: find returns 1 when no matches found — that's OK!
+                if proc.returncode > 1:
+                    logging.warning("find failed (return code %d) on %s", proc.returncode, path)
                 lines = [l for l in out.splitlines() if l.strip()]
                 logging.debug("find(%s) returned %d lines", path, len(lines))
                 return lines
@@ -131,10 +139,10 @@ class Locator:
                 logging.warning("find timed out on %s", path)
                 return []
             except Exception:
-                logging.exception("find failed on %s", path)
+                logging.exception("Exception in find on %s", path)
                 return []
         else:
-            # Fallback to os.walk
+            # Fallback to os.walk (no glob issues)
             logging.debug("find command not found; using os.walk fallback on %s", path)
             matches = []
             want = pattern.lower()
@@ -149,7 +157,7 @@ class Locator:
             return matches
 
     def _run_find(self, pattern: str) -> List[str]:
-        if not pattern.strip():
+        if not pattern or not pattern.strip():
             return []
         paths = self._discover_hardware_paths()
         if not paths:
@@ -200,7 +208,7 @@ class Locator:
         # Run locate
         locate_results = self._run_locate(locate_tokens, raw_mode=raw_mode)
 
-        # Run find on hardware mounts (only if search term is non-empty)
+        # Run find on hardware mounts
         search_term = " ".join(locate_tokens)
         find_results = self._run_find(search_term) if search_term.strip() else []
 
