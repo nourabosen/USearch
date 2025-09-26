@@ -35,17 +35,15 @@ Navigation:
 2. Make sure the locate database is present and up-to-date:
    ```bash
    sudo updatedb
-```
-
-On systems with `plocate`, enable/update the timer:
-
-```bash
-sudo systemctl enable --now plocate-updatedb.timer
-```
+   ```
+   On systems with `plocate`, enable/update the timer:
+   ```bash
+   sudo systemctl enable --now plocate-updatedb.timer
+   ```
 
 3. Install the extension via Ulauncher (copy this repo into your Ulauncher extensions folder or use the extension manager if you publish it).
 
-## Notes & Caveats
+## Notes
 
 * The extension does two searches: an indexed `plocate/locate` query (fast) and a live `find` on configured hardware paths (slower). Combined queries may be slower when mounted drives are large.
 * If you prefer system indexing to include your external drives automatically, edit `/etc/updatedb.conf` and remove `/run` and `/media` from `PRUNEPATHS`, then run `sudo updatedb`.
