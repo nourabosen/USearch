@@ -6,7 +6,6 @@ from ulauncher.api.shared.action.RenderResultListAction import RenderResultListA
 from ulauncher.api.shared.action.OpenAction import OpenAction
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
 from ulauncher.api.shared.action.SetUserQueryAction import SetUserQueryAction
-from ulauncher.api.shared.action.RunScriptAction import RunScriptAction
 from ulauncher.api.shared.event import PreferencesEvent
 from ulauncher.api.shared.event import PreferencesUpdateEvent
 from ulauncher.api.shared.event import ItemEnterEvent
@@ -46,24 +45,14 @@ class KeywordQueryEventListener(EventListener):
     def __help(self):
         items = []
         items.append(ExtensionSmallResultItem(icon='images/info.png',
-            name='File search: s <pattern>',
+            name='Normal search: s <pattern>',
             description='Fast indexed search + hardware drives',
             on_enter=SetUserQueryAction('s ')
         ))
-        items.append(ExtensionSmallResultItem(icon='images/folder.png',
-            name='Folder search: s folder <pattern>',
-            description='Search for directories only',
-            on_enter=SetUserQueryAction('s folder ')
-        ))
         items.append(ExtensionSmallResultItem(icon='images/hardware.png',
-            name='Hardware files: s hw <pattern>',
+            name='Hardware search: s hw <pattern>',
             description='Search only mounted drives (/media, /mnt, /run/media)',
             on_enter=SetUserQueryAction('s hw ')
-        ))
-        items.append(ExtensionSmallResultItem(icon='images/hardware-folder.png',
-            name='Hardware folders: s hw folder <pattern>',
-            description='Search folders on mounted drives only',
-            on_enter=SetUserQueryAction('s hw folder ')
         ))
         items.append(ExtensionSmallResultItem(icon='images/raw.png',
             name='Raw locate: s r <args>',
@@ -88,38 +77,33 @@ class KeywordQueryEventListener(EventListener):
                     items.append(ExtensionSmallResultItem(
                         icon='images/warning.png',
                         name='No results found',
-                        description=f'No files or folders matching "{arg}"',
+                        description=f'No files matching "{arg}"',
                         on_enter=SetUserQueryAction('s ')
                     ))
                 else:
                     alt_action = ExtensionCustomAction(results, True)
-                    
-                    for file_path in results:
-                        # Truncate long paths for display
-                        display_name = file_path if len(file_path) <= 80 else f"{file_path[:77]}..."
-                        
-                        # Check if it's a directory to determine icon and action
-                        is_directory = os.path.isdir(file_path) if os.path.exists(file_path) else file_path.endswith('/')
-                        
-                        icon = 'images/folder.png' if is_directory else 'images/file.png'
-                        
-                        if is_directory:
-                            enter_action = RunScriptAction(f'xdg-open "{file_path}"')
-                        else:
-                            enter_action = OpenAction(file_path)
-                        
+                    for file in results:
+                        # Truncate long filenames for display
+                        display_name = file if len(file) <= 80 else f"{file[:77]}..."
                         items.append(ExtensionSmallResultItem(
-                            icon=icon,
+                            icon='images/ok.png',
                             name=display_name,
-                            description=file_path,
-                            on_enter=enter_action,
+                            description=file,  # Full path in description
+                            on_enter=OpenAction(file),
                             on_alt_enter=alt_action
                         ))
                     
-                    # Add info item
+                    # Add info item showing search mode
+                    if arg.lower().startswith('hw '):
+                        mode_info = "Hardware-only search"
+                    elif arg.lower().startswith('r '):
+                        mode_info = "Raw locate search"
+                    else:
+                        mode_info = "Combined search (indexed + hardware)"
+                    
                     items.append(ExtensionSmallResultItem(
                         icon='images/info.png',
-                        name=f"Found {len(results)} results",
+                        name=f"Found {len(results)} results - {mode_info}",
                         description="Alt+Enter to copy all paths",
                         on_enter=SetUserQueryAction('s ')
                     ))
