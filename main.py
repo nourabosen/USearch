@@ -77,6 +77,19 @@ class KeywordQueryEventListener(EventListener):
         self.cache_timeout = 300  # 5 minutes cache
     
     def __help(self):
+        # Debug image paths
+        extension_path = os.path.dirname(os.path.abspath(__file__))
+        images_dir = os.path.join(extension_path, 'images')
+        print(f"Extension path: {extension_path}")
+        print(f"Images dir: {images_dir}")
+        
+        if os.path.exists(images_dir):
+            print("Images directory exists")
+            for img in os.listdir(images_dir):
+                print(f"Found image: {img}")
+        else:
+            print("Images directory does not exist!")
+        
         items = []
         items.append(ExtensionResultItem(icon='images/info.png',
             name='File search: s <pattern>',
