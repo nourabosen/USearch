@@ -72,41 +72,6 @@ class Locator:
         print(f"Discovered {len(out)} hardware paths: {out}")
         return out
 
-    def _shorten_hardware_path(self, full_path: str) -> str:
-        """Convert full hardware path to shortened display format."""
-        # Try to match hardware mount patterns
-        patterns = [
-            # /run/media/nour/01DBF71DDDEF4780/...
-            ("/run/media/", 4),  # Keep 4 path components after /run/media/
-            # /media/nour/01DBF71DDDEF4780/...
-            ("/media/", 3),      # Keep 3 path components after /media/
-            # /mnt/01DBF71DDDEF4780/...
-            ("/mnt/", 2)         # Keep 2 path components after /mnt/
-        ]
-        
-        for prefix, keep_components in patterns:
-            if full_path.startswith(prefix):
-                parts = full_path.split('/')
-                # Find the prefix index
-                prefix_parts = prefix.rstrip('/').split('/')
-                start_idx = len(prefix_parts)
-                
-                if len(parts) > start_idx + keep_components:
-                    # We have enough parts to shorten
-                    base_parts = parts[start_idx:start_idx + keep_components]
-                    remaining_parts = parts[start_idx + keep_components:]
-                    
-                    if remaining_parts:
-                        return '/'.join(base_parts) + '/.../' + '/'.join(remaining_parts)
-                    else:
-                        return '/'.join(base_parts)
-                else:
-                    # Not enough parts to shorten, return relative path from prefix
-                    return '/'.join(parts[start_idx:])
-        
-        # If no pattern matches, return the original path
-        return full_path
-
     def _run_find(self, pattern: str) -> List[str]:
         """Run find on hardware-mounted drives - optimized version."""
         paths = self._discover_hardware_paths()
@@ -134,10 +99,7 @@ class Locator:
                 if result.returncode == 0:
                     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
                     print(f"Found {len(lines)} results in {path}")
-                    
-                    # Shorten the paths for display
-                    shortened_lines = [self._shorten_hardware_path(line) for line in lines]
-                    all_results.extend(shortened_lines)
+                    all_results.extend(lines)
                     
                     # Stop if we have enough results
                     if len(all_results) >= self.limit:
