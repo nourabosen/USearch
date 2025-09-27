@@ -11,6 +11,7 @@ from ulauncher.api.shared.event import PreferencesUpdateEvent
 from ulauncher.api.shared.event import ItemEnterEvent
 from ulauncher.api.shared.action.ExtensionCustomAction import ExtensionCustomAction
 from locator import Locator
+import os
 
 locator = Locator()
 
@@ -60,6 +61,55 @@ class KeywordQueryEventListener(EventListener):
             on_enter=SetUserQueryAction('s r ')
         ))
         return items
+    
+    def __format_display_name(self, file_path):
+        """Format the display name to show filename/extension with parent context"""
+        try:
+            # Get the filename and extension
+            filename = os.path.basename(file_path)
+            dir_path = os.path.dirname(file_path)
+            
+            # Extract useful path components for context
+            path_parts = file_path.split('/')
+            
+            # Look for hardware mount points and user directories
+            hardware_bases = ["/run/media", "/media", "/mnt"]
+            user_name = None
+            volume_name = None
+            parent_dir = None
+            
+            for i, part in enumerate(path_parts):
+                if part in hardware_bases and i + 2 < len(path_parts):
+                    # Found a hardware base path like /run/media
+                    user_name = path_parts[i + 1] if i + 1 < len(path_parts) else None
+                    volume_name = path_parts[i + 2] if i + 2 < len(path_parts) else None
+                    # Get the parent directory of the file (the folder containing the file)
+                    if len(path_parts) > i + 3:
+                        parent_dir = path_parts[-2]  # Second last part is the parent directory
+                    break
+            
+            # Build the display name
+            if user_name and volume_name:
+                if parent_dir:
+                    return f"{user_name}/{volume_name}/.../[{parent_dir}]/{filename}"
+                else:
+                    return f"{user_name}/{volume_name}/.../{filename}"
+            elif volume_name:
+                if parent_dir:
+                    return f"{volume_name}/.../[{parent_dir}]/{filename}"
+                else:
+                    return f"{volume_name}/.../{filename}"
+            else:
+                # Fallback: just show the filename with parent directory context
+                parent_dir = os.path.basename(dir_path)
+                if parent_dir:
+                    return f".../[{parent_dir}]/{filename}"
+                else:
+                    return filename
+                    
+        except Exception as e:
+            print(f"Error formatting display name for {file_path}: {e}")
+            return os.path.basename(file_path)
                 
     def on_event(self, event, extension):
         arg = event.get_argument()
@@ -83,8 +133,9 @@ class KeywordQueryEventListener(EventListener):
                 else:
                     alt_action = ExtensionCustomAction(results, True)
                     for file in results:
-                        # Truncate long filenames for display
-                        display_name = file if len(file) <= 80 else f"{file[:77]}..."
+                        # Format the display name to show filename/extension with context
+                        display_name = self.__format_display_name(file)
+                        
                         items.append(ExtensionSmallResultItem(
                             icon='images/ok.png',
                             name=display_name,
