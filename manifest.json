@@ -1,6 +1,6 @@
 {
   "required_api_version": "2",
-  "name": "USearch",
+  "name": "FileFlow",
   "description": "Find files using plocate/locate (fast indexed search) and include mounted hardware by performing a live scan of /run/media, /media, and /mnt. Shows results with hardware drive support.",
   "developer_name": "Nour Abosen",
   "icon": "images/icon.png",
