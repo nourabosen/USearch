@@ -1,4 +1,4 @@
-# USearch — Ulauncher Extension
+# FileFlow — Ulauncher Extension
 
 **Find files and folders quickly using the system locate database (plocate/locate) with mounted hardware drive support and intelligent "Open With" functionality.**
 
@@ -114,7 +114,7 @@ The extension intelligently combines multiple search methods and dynamic applica
 
 ## Configuration
 
-Adjust settings in Ulauncher → Preferences → Extensions → USearch:
+Adjust settings in Ulauncher → Preferences → Extensions → FileFlow:
 
 - **Keyword**: Change the activation keyword (default: `s`)
 - **Limit**: Maximum number of results to display
