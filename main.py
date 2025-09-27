@@ -2,10 +2,12 @@ from ulauncher.api.client.Extension import Extension
 from ulauncher.api.client.EventListener import EventListener
 from ulauncher.api.shared.event import KeywordQueryEvent
 from ulauncher.api.shared.item.ExtensionSmallResultItem import ExtensionSmallResultItem
+from ulauncher.api.shared.item.ExtensionResultItem import ExtensionResultItem
 from ulauncher.api.shared.action.RenderResultListAction import RenderResultListAction
 from ulauncher.api.shared.action.OpenAction import OpenAction
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
 from ulauncher.api.shared.action.SetUserQueryAction import SetUserQueryAction
+from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
 from ulauncher.api.shared.event import PreferencesEvent
 from ulauncher.api.shared.event import PreferencesUpdateEvent
 from ulauncher.api.shared.event import ItemEnterEvent
@@ -38,14 +40,18 @@ class PreferencesEventListener(EventListener):
 class ItemEnterEventListener(EventListener):
     def on_event(self, event, extension):
         data = event.get_data()
-        if isinstance(data, dict) and data.get('type') == 'open_with':
-            # Handle open with action
-            file_path = data['file_path']
-            app_command = data['app_command']
-            try:
-                subprocess.Popen([app_command, file_path])
-            except Exception as e:
-                print(f"Error opening with {app_command}: {e}")
+        if isinstance(data, dict):
+            if data.get('type') == 'open_with':
+                # Handle open with action
+                file_path = data['file_path']
+                app_command = data['app_command']
+                try:
+                    subprocess.Popen([app_command, file_path])
+                except Exception as e:
+                    print(f"Error opening with {app_command}: {e}")
+            elif data.get('type') == 'open_with_menu':
+                # This is the menu trigger, nothing to do here
+                pass
         else:
             # Handle copy all paths (original functionality)
             results = data if isinstance(data, list) else []
@@ -59,22 +65,22 @@ class ItemEnterEventListener(EventListener):
 class KeywordQueryEventListener(EventListener):
     def __help(self):
         items = []
-        items.append(ExtensionSmallResultItem(icon='images/info.png',
+        items.append(ExtensionResultItem(icon='images/info.png',
             name='File search: s <pattern>',
             description='Fast indexed search + hardware drives',
             on_enter=SetUserQueryAction('s ')
         ))
-        items.append(ExtensionSmallResultItem(icon='images/folder.png',
+        items.append(ExtensionResultItem(icon='images/folder.png',
             name='Folder search: s dir <pattern>',
             description='Search for directories only',
             on_enter=SetUserQueryAction('s dir ')
         ))
-        items.append(ExtensionSmallResultItem(icon='images/hardware.png',
+        items.append(ExtensionResultItem(icon='images/hardware.png',
             name='Hardware search: s hw <pattern>',
             description='Search only mounted drives (/media, /mnt, /run/media)',
             on_enter=SetUserQueryAction('s hw ')
         ))
-        items.append(ExtensionSmallResultItem(icon='images/raw.png',
+        items.append(ExtensionResultItem(icon='images/raw.png',
             name='Raw locate: s r <args>',
             description='Raw plocate/locate arguments',
             on_enter=SetUserQueryAction('s r ')
@@ -137,93 +143,131 @@ class KeywordQueryEventListener(EventListener):
         # Check if it's a directory
         if os.path.isdir(file_path):
             apps.extend([
-                ('File Manager', 'nautilus'),
-                ('Terminal', 'gnome-terminal'),
+                ('File Manager (nautilus)', 'nautilus'),
+                ('Terminal (gnome-terminal)', 'gnome-terminal'),
                 ('VS Code', 'code'),
                 ('File Manager (dolphin)', 'dolphin'),
-                ('File Manager (thunar)', 'thunar')
+                ('File Manager (thunar)', 'thunar'),
+                ('File Manager (pcmanfm)', 'pcmanfm')
             ])
         else:
             # Get file extension
             _, ext = os.path.splitext(file_path.lower())
             
-            if ext in ['.txt', '.md', '.log', '.conf', '.ini']:
+            if ext in ['.txt', '.md', '.log', '.conf', '.ini', '.py', '.js', '.html', '.css', '.json', '.xml']:
                 apps.extend([
-                    ('Text Editor', 'gedit'),
+                    ('Text Editor (gedit)', 'gedit'),
                     ('VS Code', 'code'),
                     ('Sublime Text', 'subl'),
                     ('Vim', 'vim'),
-                    ('Nano', 'nano')
+                    ('Nano', 'nano'),
+                    ('Mousepad', 'mousepad')
                 ])
             elif ext in ['.pdf']:
                 apps.extend([
-                    ('Document Viewer', 'evince'),
+                    ('Document Viewer (evince)', 'evince'),
                     ('Okular', 'okular'),
                     ('Firefox', 'firefox'),
-                    ('Chrome', 'google-chrome')
+                    ('Chrome', 'google-chrome-stable')
                 ])
-            elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg']:
+            elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp']:
                 apps.extend([
-                    ('Image Viewer', 'eog'),
+                    ('Image Viewer (eog)', 'eog'),
                     ('GIMP', 'gimp'),
                     ('Feh', 'feh'),
                     ('Firefox', 'firefox')
                 ])
-            elif ext in ['.mp4', '.avi', '.mkv', '.mov', '.webm']:
+            elif ext in ['.mp4', '.avi', '.mkv', '.mov', '.webm', '.flv', '.wmv']:
                 apps.extend([
                     ('VLC', 'vlc'),
                     ('MPV', 'mpv'),
                     ('Celluloid', 'celluloid'),
                     ('Firefox', 'firefox')
                 ])
-            elif ext in ['.mp3', '.wav', '.flac', '.ogg']:
+            elif ext in ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac']:
                 apps.extend([
-                    ('Music Player', 'rhythmbox'),
+                    ('Music Player (rhythmbox)', 'rhythmbox'),
                     ('VLC', 'vlc'),
                     ('Audacious', 'audacious')
+                ])
+            else:
+                # Generic applications for unknown file types
+                apps.extend([
+                    ('Text Editor (gedit)', 'gedit'),
+                    ('VS Code', 'code'),
+                    ('File Manager (nautilus)', 'nautilus')
                 ])
         
         # Add generic applications
         apps.extend([
-            ('Default Application', 'xdg-open'),
-            ('Custom Command...', 'custom')
+            ('Default Application (xdg-open)', 'xdg-open'),
+            ('System Default', 'gio open')
         ])
         
         # Remove duplicates and return
         seen = set()
         return [app for app in apps if not (app in seen or seen.add(app))]
 
-    def __create_open_with_items(self, file_path):
-        """Create menu items for Open With functionality"""
+    def __create_open_with_menu(self, file_path, query):
+        """Create the Open With menu when left arrow is pressed"""
         items = []
+        
+        # Add a header item
+        items.append(ExtensionResultItem(
+            icon='images/app.png',
+            name=f"Open '{os.path.basename(file_path)}' with...",
+            description='Choose an application to open this file',
+            on_enter=HideWindowAction(),
+            on_alt_enter=HideWindowAction()
+        ))
+        
+        # Get available applications
         apps = self.__get_open_with_apps(file_path)
         
         for app_name, app_command in apps:
-            if app_command == 'custom':
-                # For custom command, we'd need more complex handling
-                items.append(ExtensionSmallResultItem(
-                    icon='images/terminal.png',
-                    name=f"Open with custom command...",
-                    description=f"Enter custom command for: {os.path.basename(file_path)}",
-                    on_enter=DoNothingAction()
-                ))
-            else:
-                items.append(ExtensionSmallResultItem(
-                    icon='images/app.png',
-                    name=f"Open with {app_name}",
-                    description=f"{app_command} {os.path.basename(file_path)}",
-                    on_enter=ExtensionCustomAction({
-                        'type': 'open_with',
-                        'file_path': file_path,
-                        'app_command': app_command
-                    }, True)
-                ))
+            # Check if the application exists
+            app_exists = shutil.which(app_command) is not None
+            
+            items.append(ExtensionResultItem(
+                icon='images/ok.png' if app_exists else 'images/warning.png',
+                name=app_name,
+                description=f"Press Enter to open with {app_command}" if app_exists else f"Application not found: {app_command}",
+                on_enter=ExtensionCustomAction({
+                    'type': 'open_with',
+                    'file_path': file_path,
+                    'app_command': app_command
+                }, True) if app_exists else DoNothingAction(),
+                on_alt_enter=ExtensionCustomAction({
+                    'type': 'open_with',
+                    'file_path': file_path,
+                    'app_command': app_command
+                }, True) if app_exists else DoNothingAction()
+            ))
+        
+        # Add back to search item
+        items.append(ExtensionResultItem(
+            icon='images/back.png',
+            name='Back to search results',
+            description='Return to the main search view',
+            on_enter=SetUserQueryAction('s ' + query.split(' ', 1)[1] if ' ' in query else 's '),
+            on_alt_enter=SetUserQueryAction('s ' + query.split(' ', 1)[1] if ' ' in query else 's ')
+        ))
         
         return items
-                
+
     def on_event(self, event, extension):
         arg = event.get_argument()
+        query = event.get_query() or ""
         items = []
+
+        # Check if this is an Open With menu request (query starts with "s openwith ")
+        if query.startswith("s openwith ") and len(query.split()) >= 3:
+            try:
+                file_path = ' '.join(query.split()[2:])
+                if os.path.exists(file_path):
+                    return RenderResultListAction(self.__create_open_with_menu(file_path, query))
+            except:
+                pass
 
         if arg is None or arg.strip() == '':
             items = self.__help()
@@ -234,7 +278,7 @@ class KeywordQueryEventListener(EventListener):
                 print(f"Ulauncher got {len(results)} results")
                 
                 if not results:
-                    items.append(ExtensionSmallResultItem(
+                    items.append(ExtensionResultItem(
                         icon='images/warning.png',
                         name='No results found',
                         description=f'No files matching "{arg}"',
@@ -242,20 +286,28 @@ class KeywordQueryEventListener(EventListener):
                     ))
                 else:
                     alt_action = ExtensionCustomAction(results, True)
-                    for file in results:
+                    
+                    for i, file_path in enumerate(results):
                         # Format the display name to show filename/extension with context
-                        display_name = self.__format_display_name(file)
+                        display_name = self.__format_display_name(file_path)
                         
                         # Check if it's a directory or file for icon
-                        icon = 'images/folder.png' if os.path.isdir(file) else 'images/ok.png'
+                        icon = 'images/folder.png' if os.path.isdir(file_path) else 'images/ok.png'
                         
-                        items.append(ExtensionSmallResultItem(
+                        # Create the main search result item
+                        item = ExtensionResultItem(
                             icon=icon,
                             name=display_name,
-                            description=file,  # Full path in description
-                            on_enter=OpenAction(file),
+                            description=file_path,  # Full path in description
+                            on_enter=OpenAction(file_path),
                             on_alt_enter=alt_action
-                        ))
+                        )
+                        
+                        # Add Open With action on left arrow (secondary action)
+                        open_with_action = SetUserQueryAction(f's openwith {file_path}')
+                        item.on_keyboard_enter = open_with_action
+                        
+                        items.append(item)
                     
                     # Add info item showing search mode
                     mode_info = "File search"
@@ -266,23 +318,18 @@ class KeywordQueryEventListener(EventListener):
                     elif arg.lower().startswith('dir ') or arg.lower().startswith('folder '):
                         mode_info = "Directory search"
                     
-                    # Add Open With menu when left arrow is pressed (as secondary action)
-                    if len(results) == 1:
-                        # For single result, show Open With options as secondary items
-                        open_with_items = self.__create_open_with_items(results[0])
-                        items.extend(open_with_items)
-                    
-                    items.append(ExtensionSmallResultItem(
+                    info_item = ExtensionResultItem(
                         icon='images/info.png',
                         name=f"Found {len(results)} results - {mode_info}",
                         description="Enter: Open | Alt+Enter: Copy all | ←: Open With",
                         on_enter=SetUserQueryAction('s ')
-                    ))
+                    )
+                    items.append(info_item)
                         
             except Exception as e:
                 error_info = str(e)
                 print(f"Ulauncher error: {error_info}")
-                items = [ExtensionSmallResultItem(
+                items = [ExtensionResultItem(
                     icon='images/error.png',
                     name='Search error',
                     description=error_info,
@@ -290,6 +337,9 @@ class KeywordQueryEventListener(EventListener):
                 )]
         
         return RenderResultListAction(items)
+
+# Add missing import
+import shutil
 
 if __name__ == '__main__':
     SearchFileExtension().run()
