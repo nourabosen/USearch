@@ -10,8 +10,11 @@ from ulauncher.api.shared.event import PreferencesEvent
 from ulauncher.api.shared.event import PreferencesUpdateEvent
 from ulauncher.api.shared.event import ItemEnterEvent
 from ulauncher.api.shared.action.ExtensionCustomAction import ExtensionCustomAction
-from locator import Locator
+from ulauncher.api.shared.action.DoNothingAction import DoNothingAction
+import subprocess
 import os
+
+from locator import Locator
 
 locator = Locator()
 
@@ -34,21 +37,37 @@ class PreferencesEventListener(EventListener):
 
 class ItemEnterEventListener(EventListener):
     def on_event(self, event, extension):
-        results = event.get_data()
-        items = []
-        for file in results:
-            items.append(ExtensionSmallResultItem(icon='images/copy.png',
-                name=file,
-                on_enter=CopyToClipboardAction(file)))
-        return RenderResultListAction(items)
+        data = event.get_data()
+        if isinstance(data, dict) and data.get('type') == 'open_with':
+            # Handle open with action
+            file_path = data['file_path']
+            app_command = data['app_command']
+            try:
+                subprocess.Popen([app_command, file_path])
+            except Exception as e:
+                print(f"Error opening with {app_command}: {e}")
+        else:
+            # Handle copy all paths (original functionality)
+            results = data if isinstance(data, list) else []
+            items = []
+            for file in results:
+                items.append(ExtensionSmallResultItem(icon='images/copy.png',
+                    name=file,
+                    on_enter=CopyToClipboardAction(file)))
+            return RenderResultListAction(items)
 
 class KeywordQueryEventListener(EventListener):
     def __help(self):
         items = []
         items.append(ExtensionSmallResultItem(icon='images/info.png',
-            name='Normal search: s <pattern>',
+            name='File search: s <pattern>',
             description='Fast indexed search + hardware drives',
             on_enter=SetUserQueryAction('s ')
+        ))
+        items.append(ExtensionSmallResultItem(icon='images/folder.png',
+            name='Folder search: s dir <pattern>',
+            description='Search for directories only',
+            on_enter=SetUserQueryAction('s dir ')
         ))
         items.append(ExtensionSmallResultItem(icon='images/hardware.png',
             name='Hardware search: s hw <pattern>',
@@ -110,6 +129,97 @@ class KeywordQueryEventListener(EventListener):
         except Exception as e:
             print(f"Error formatting display name for {file_path}: {e}")
             return os.path.basename(file_path)
+    
+    def __get_open_with_apps(self, file_path):
+        """Get common applications for opening files based on file type"""
+        apps = []
+        
+        # Check if it's a directory
+        if os.path.isdir(file_path):
+            apps.extend([
+                ('File Manager', 'nautilus'),
+                ('Terminal', 'gnome-terminal'),
+                ('VS Code', 'code'),
+                ('File Manager (dolphin)', 'dolphin'),
+                ('File Manager (thunar)', 'thunar')
+            ])
+        else:
+            # Get file extension
+            _, ext = os.path.splitext(file_path.lower())
+            
+            if ext in ['.txt', '.md', '.log', '.conf', '.ini']:
+                apps.extend([
+                    ('Text Editor', 'gedit'),
+                    ('VS Code', 'code'),
+                    ('Sublime Text', 'subl'),
+                    ('Vim', 'vim'),
+                    ('Nano', 'nano')
+                ])
+            elif ext in ['.pdf']:
+                apps.extend([
+                    ('Document Viewer', 'evince'),
+                    ('Okular', 'okular'),
+                    ('Firefox', 'firefox'),
+                    ('Chrome', 'google-chrome')
+                ])
+            elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg']:
+                apps.extend([
+                    ('Image Viewer', 'eog'),
+                    ('GIMP', 'gimp'),
+                    ('Feh', 'feh'),
+                    ('Firefox', 'firefox')
+                ])
+            elif ext in ['.mp4', '.avi', '.mkv', '.mov', '.webm']:
+                apps.extend([
+                    ('VLC', 'vlc'),
+                    ('MPV', 'mpv'),
+                    ('Celluloid', 'celluloid'),
+                    ('Firefox', 'firefox')
+                ])
+            elif ext in ['.mp3', '.wav', '.flac', '.ogg']:
+                apps.extend([
+                    ('Music Player', 'rhythmbox'),
+                    ('VLC', 'vlc'),
+                    ('Audacious', 'audacious')
+                ])
+        
+        # Add generic applications
+        apps.extend([
+            ('Default Application', 'xdg-open'),
+            ('Custom Command...', 'custom')
+        ])
+        
+        # Remove duplicates and return
+        seen = set()
+        return [app for app in apps if not (app in seen or seen.add(app))]
+
+    def __create_open_with_items(self, file_path):
+        """Create menu items for Open With functionality"""
+        items = []
+        apps = self.__get_open_with_apps(file_path)
+        
+        for app_name, app_command in apps:
+            if app_command == 'custom':
+                # For custom command, we'd need more complex handling
+                items.append(ExtensionSmallResultItem(
+                    icon='images/terminal.png',
+                    name=f"Open with custom command...",
+                    description=f"Enter custom command for: {os.path.basename(file_path)}",
+                    on_enter=DoNothingAction()
+                ))
+            else:
+                items.append(ExtensionSmallResultItem(
+                    icon='images/app.png',
+                    name=f"Open with {app_name}",
+                    description=f"{app_command} {os.path.basename(file_path)}",
+                    on_enter=ExtensionCustomAction({
+                        'type': 'open_with',
+                        'file_path': file_path,
+                        'app_command': app_command
+                    }, True)
+                ))
+        
+        return items
                 
     def on_event(self, event, extension):
         arg = event.get_argument()
@@ -136,8 +246,11 @@ class KeywordQueryEventListener(EventListener):
                         # Format the display name to show filename/extension with context
                         display_name = self.__format_display_name(file)
                         
+                        # Check if it's a directory or file for icon
+                        icon = 'images/folder.png' if os.path.isdir(file) else 'images/ok.png'
+                        
                         items.append(ExtensionSmallResultItem(
-                            icon='images/ok.png',
+                            icon=icon,
                             name=display_name,
                             description=file,  # Full path in description
                             on_enter=OpenAction(file),
@@ -145,17 +258,24 @@ class KeywordQueryEventListener(EventListener):
                         ))
                     
                     # Add info item showing search mode
+                    mode_info = "File search"
                     if arg.lower().startswith('hw '):
                         mode_info = "Hardware-only search"
                     elif arg.lower().startswith('r '):
                         mode_info = "Raw locate search"
-                    else:
-                        mode_info = "Combined search (indexed + hardware)"
+                    elif arg.lower().startswith('dir ') or arg.lower().startswith('folder '):
+                        mode_info = "Directory search"
+                    
+                    # Add Open With menu when left arrow is pressed (as secondary action)
+                    if len(results) == 1:
+                        # For single result, show Open With options as secondary items
+                        open_with_items = self.__create_open_with_items(results[0])
+                        items.extend(open_with_items)
                     
                     items.append(ExtensionSmallResultItem(
                         icon='images/info.png',
                         name=f"Found {len(results)} results - {mode_info}",
-                        description="Alt+Enter to copy all paths",
+                        description="Enter: Open | Alt+Enter: Copy all | ←: Open With",
                         on_enter=SetUserQueryAction('s ')
                     ))
                         
