@@ -72,8 +72,13 @@ class Locator:
         print(f"Discovered {len(out)} hardware paths: {out}")
         return out
 
-    def _run_find(self, pattern: str) -> List[str]:
-        """Run find on hardware-mounted drives - optimized version."""
+    def _run_find(self, pattern: str, search_type: str = "file") -> List[str]:
+        """Run find on hardware-mounted drives - optimized version.
+        
+        Args:
+            pattern: Search pattern
+            search_type: "file" for files, "directory" for directories
+        """
         paths = self._discover_hardware_paths()
         if not paths:
             print("No hardware paths found")
@@ -84,14 +89,13 @@ class Locator:
             return []
 
         all_results = []
-        print(f"Searching for pattern: '{pattern}' in hardware paths")
+        print(f"Searching for {search_type} pattern: '{pattern}' in hardware paths")
         
         for path in paths:
             try:
                 print(f"Searching in: {path}")
                 # Use -maxdepth 3 to avoid deep recursion and speed up search
-                # Use -type f to only search files, not directories
-                cmd = [self.find_cmd, path, "-maxdepth", "3", "-type", "f", "-iname", f"*{pattern}*"]
+                cmd = [self.find_cmd, path, "-maxdepth", "3", "-type", search_type[0], "-iname", f"*{pattern}*"]
                 
                 # Run with timeout to prevent hanging
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
@@ -124,6 +128,12 @@ class Locator:
         
         tokens = pattern.strip().split()
         print(f"Search pattern: '{pattern}', tokens: {tokens}")
+        
+        # Folder search mode: "dir <pattern>" or "folder <pattern>"
+        if tokens[0].lower() in ['dir', 'folder'] and len(tokens) > 1:
+            search_pattern = ' '.join(tokens[1:])
+            print(f"Directory search for: '{search_pattern}'")
+            return self._run_find(search_pattern, "directory")
         
         # Hardware-only mode: "hw <pattern>"
         if tokens[0].lower() == 'hw' and len(tokens) > 1:
