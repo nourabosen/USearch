@@ -50,6 +50,15 @@ class ItemEnterEventListener(EventListener):
                     subprocess.Popen([app_command, file_path])
                 except Exception as e:
                     print(f"Error opening with {app_command}: {e}")
+            elif data.get('type') == 'open_with_trigger':
+                # Trigger Open With menu - set the query
+                file_path = data['file_path']
+                return RenderResultListAction([ExtensionResultItem(
+                    icon='images/info.png',
+                    name='Press Enter to continue to Open With menu',
+                    description='This will switch to Open With mode',
+                    on_enter=SetUserQueryAction(f's openwith {file_path}')
+                )])
         else:
             # Handle copy all paths (original functionality)
             results = data if isinstance(data, list) else []
@@ -207,7 +216,7 @@ class KeywordQueryEventListener(EventListener):
         return [app for app in apps if not (app in seen or seen.add(app))]
 
     def __create_open_with_menu(self, file_path):
-        """Create the Open With menu when right arrow is pressed"""
+        """Create the Open With menu"""
         items = []
         
         # Add a header item
@@ -236,16 +245,24 @@ class KeywordQueryEventListener(EventListener):
                 }, True) if app_exists else DoNothingAction()
             ))
         
+        # Add back to search item
+        items.append(ExtensionResultItem(
+            icon='images/back.png',
+            name='Back to search results',
+            description='Return to the main search view',
+            on_enter=SetUserQueryAction('s ')
+        ))
+        
         return items
 
     def on_event(self, event, extension):
         arg = event.get_argument()
         items = []
 
-        # Check if this is an Open With menu request (query contains "openwith:")
-        if arg and arg.startswith('openwith:'):
+        # Check if this is an Open With menu request
+        if arg and arg.startswith('openwith '):
             try:
-                file_path = arg.split('openwith:', 1)[1].strip()
+                file_path = arg.split('openwith ', 1)[1].strip()
                 if os.path.exists(file_path):
                     return RenderResultListAction(self.__create_open_with_menu(file_path))
                 else:
@@ -289,15 +306,19 @@ class KeywordQueryEventListener(EventListener):
                         # Check if it's a directory or file for icon
                         icon = 'images/folder.png' if os.path.isdir(file_path) else 'images/ok.png'
                         
-                        # Create the main search result item with right arrow action
+                        # Create Open With trigger action
+                        open_with_action = ExtensionCustomAction({
+                            'type': 'open_with_trigger', 
+                            'file_path': file_path
+                        }, True)
+                        
+                        # Create the main search result item
                         items.append(ExtensionResultItem(
                             icon=icon,
                             name=display_name,
-                            description=f"{file_path} | → for Open With menu",
+                            description=f"{file_path} | Alt+Enter for Open With",
                             on_enter=OpenAction(file_path),
-                            on_alt_enter=alt_action,
-                            # Right arrow action - set query to openwith mode
-                            on_keyboard_enter=SetUserQueryAction(f's openwith:{file_path}')
+                            on_alt_enter=open_with_action
                         ))
                     
                     # Add info item showing search mode
@@ -312,7 +333,7 @@ class KeywordQueryEventListener(EventListener):
                     items.append(ExtensionResultItem(
                         icon='images/info.png',
                         name=f"Found {len(results)} results - {mode_info}",
-                        description="Enter: Open | Alt+Enter: Copy all | →: Open With",
+                        description="Enter: Open | Alt+Enter: Open With | Ctrl+Enter: Copy all",
                         on_enter=SetUserQueryAction('s ')
                     ))
                         
